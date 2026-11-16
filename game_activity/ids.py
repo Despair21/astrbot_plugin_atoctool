@@ -28,7 +28,7 @@ def normalize_name(text: str) -> str:
 def base_raw_id(source_id: str, name: str) -> str:
     """Return the deterministic base id: ``a`` plus 16 hex characters."""
     digest = hashlib.sha256(
-        f"{source_id}\x1f{normalize_name(name)}".encode("utf-8"),
+        f"{source_id}\x1f{normalize_name(name)}".encode(),
     ).hexdigest()
     return "a" + digest[:16]
 

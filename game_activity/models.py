@@ -85,6 +85,7 @@ def load_zone(name: str) -> tzinfo:
             return timezone(timedelta(hours=offset))
         raise ValueError(f"unknown_timezone:{name}") from None
 
+
 DTO_FIELDS: tuple[str, ...] = (
     "key",
     "raw_id",
@@ -233,7 +234,5 @@ class Activity:
         """Return the API DTO with contract field order."""
         data = self.to_dict()
         data["is_primary"] = is_primary
-        data["merged_sources"] = (
-            list(merged_sources) if merged_sources else [self.key]
-        )
+        data["merged_sources"] = list(merged_sources) if merged_sources else [self.key]
         return {name: data[name] for name in DTO_FIELDS}

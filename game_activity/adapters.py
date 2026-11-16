@@ -99,7 +99,9 @@ class Adapter:
         """Convert a payload into normalized activities."""
         raise NotImplementedError
 
-    def version_info(self, payload: dict[str, Any], cfg: SourceConfig) -> tuple[str, str]:
+    def version_info(
+        self, payload: dict[str, Any], cfg: SourceConfig
+    ) -> tuple[str, str]:
         """Return upstream version fields for the snapshot source record."""
         version = payload.get("version")
         version_name = payload.get("versionName")
@@ -147,7 +149,9 @@ class StarrailAssistantV1Adapter(Adapter):
             items.append(
                 NormalizedActivity(
                     name=name.strip(),
-                    description=description.strip() if isinstance(description, str) else "",
+                    description=description.strip()
+                    if isinstance(description, str)
+                    else "",
                     kind=(kind.strip() or None) if isinstance(kind, str) else None,
                     start_epoch=start_epoch,
                     end_epoch=end_epoch,
@@ -167,7 +171,9 @@ class GenericJsonAdapter(Adapter):
     _REQUIRED = ("map_activities", "map_name", "map_start", "map_end")
 
     def validate(self, cfg: SourceConfig) -> list[str]:
-        errors = [f"missing_{key}" for key in self._REQUIRED if not cfg.mapping.get(key)]
+        errors = [
+            f"missing_{key}" for key in self._REQUIRED if not cfg.mapping.get(key)
+        ]
         if not cfg.url:
             errors.append("missing_url")
         return errors
@@ -177,7 +183,9 @@ class GenericJsonAdapter(Adapter):
         activities = get_by_path(payload, path)
         return len(activities) if isinstance(activities, list) else 0
 
-    def version_info(self, payload: dict[str, Any], cfg: SourceConfig) -> tuple[str, str]:
+    def version_info(
+        self, payload: dict[str, Any], cfg: SourceConfig
+    ) -> tuple[str, str]:
         version_path = cfg.mapping.get("map_version") or "version"
         version_name_path = cfg.mapping.get("map_version_name") or "versionName"
         version = get_by_path(payload, version_path, "")
@@ -297,10 +305,7 @@ def _build_generic_config(entry: dict[str, Any]) -> SourceConfig | None:
     if not source_id:
         return None
     game_id = _sanitize_game_id(game_name) or source_id
-    mapping = {
-        key: str(entry.get(key) or "").strip()
-        for key in _MAP_KEYS
-    }
+    mapping = {key: str(entry.get(key) or "").strip() for key in _MAP_KEYS}
     return SourceConfig(
         source_id=source_id,
         game_id=game_id,

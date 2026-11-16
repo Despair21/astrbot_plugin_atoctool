@@ -180,9 +180,7 @@ def apply_source_items(
         if activity.get("raw_id")
     }
     matched_old: set[str] = set()
-    produced: list[dict[str, Any]] = [
-        dict(activity) for activity in others
-    ]
+    produced: list[dict[str, Any]] = [dict(activity) for activity in others]
     added: list[tuple[int, dict[str, Any]]] = []
 
     for raw_id, item in pairs:
@@ -247,7 +245,12 @@ def apply_source_items(
         activity.pop("is_primary", None)
         activity.pop("merged_sources", None)
 
-    produced.sort(key=lambda activity: (int(activity.get("start_epoch") or 0), str(activity.get("key") or "")))
+    produced.sort(
+        key=lambda activity: (
+            int(activity.get("start_epoch") or 0),
+            str(activity.get("key") or ""),
+        )
+    )
     snapshot["schema_version"] = SCHEMA_VERSION
     snapshot["game_id"] = cfg.game_id
     snapshot["game_name"] = cfg.game_name

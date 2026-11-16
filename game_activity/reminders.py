@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone, tzinfo
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from .diff import derive_status
 from .models import GAME_NAMES, SCHEMA_VERSION, load_zone
@@ -190,9 +191,7 @@ class ReminderEngine:
         targets_override = [
             str(umo) for umo in (config.get("target_umos") or []) if str(umo).strip()
         ]
-        by_key = {
-            str(activity.get("key") or ""): activity for activity in activities
-        }
+        by_key = {str(activity.get("key") or ""): activity for activity in activities}
 
         stats["created"] += self._ensure_jobs(
             items,
@@ -297,9 +296,7 @@ class ReminderEngine:
                     "attempts": 0,
                     "last_error": "",
                     "sent_at": None,
-                    "targets": {
-                        umo: self._new_target() for umo in targets
-                    },
+                    "targets": {umo: self._new_target() for umo in targets},
                 }
                 if not targets:
                     job["status"] = "skipped"
@@ -465,9 +462,7 @@ class ReminderEngine:
     @staticmethod
     def _refresh_job_summary(job: dict[str, Any], now: int) -> None:
         targets = job.get("targets") or {}
-        attempts = [
-            int(target.get("attempts") or 0) for target in targets.values()
-        ]
+        attempts = [int(target.get("attempts") or 0) for target in targets.values()]
         job["attempts"] = max(attempts, default=0)
         errors = [
             str(target.get("last_error") or "")
