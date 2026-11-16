@@ -135,6 +135,7 @@ class GameActivityService:
         self._sync_lock = asyncio.Lock()
         self._state_lock = asyncio.Lock()
         self._sync_task: asyncio.Task | None = None
+        self._transient_tasks: set[asyncio.Task] = set()
         self._last_manual_monotonic = 0.0
         self._session: aiohttp.ClientSession | None = None
         self._resolver: ValidatedResolver | None = None
@@ -197,11 +198,13 @@ class GameActivityService:
             return
         self.started = False
         self._stop.set()
-        for task in self._tasks:
+        tasks = list(self._tasks) + list(self._transient_tasks)
+        for task in tasks:
             task.cancel()
-        if self._tasks:
-            await asyncio.gather(*self._tasks, return_exceptions=True)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         self._tasks.clear()
+        self._transient_tasks.clear()
         self._sync_task = None
         if self._session is not None:
             await self._session.close()
@@ -479,7 +482,10 @@ class GameActivityService:
             return (False, max(1, retry_after))
         self._last_manual_monotonic = now
         self.sync_status = "running"
-        self._sync_task = asyncio.create_task(self.sync(game=game, manual=True))
+        task = asyncio.create_task(self.sync(game=game, manual=True))
+        self._sync_task = task
+        self._transient_tasks.add(task)
+        task.add_done_callback(self._transient_tasks.discard)
         return (True, 0)
 
     async def _save_http_cache(self) -> None:

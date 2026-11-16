@@ -276,6 +276,31 @@ def test_manual_sync_single_flight_and_rate_limit(data_root) -> None:
     assert calls == ["starrail"]
 
 
+def test_stop_cancels_in_flight_manual_sync(data_root) -> None:
+    service = make_service(data_root)
+    service.started = True
+
+    async def slow_sync(game=None, *, manual=False):
+        await asyncio.sleep(60)
+        return {"sources": 0, "succeeded": 0, "failed": 0}
+
+    service.sync = slow_sync  # type: ignore[assignment]
+
+    async def scenario():
+        started, _retry = await service.start_manual_sync("starrail")
+        assert started is True
+        task = service._sync_task
+        assert task is not None
+        assert task in service._transient_tasks
+        await service.stop()
+        assert task.done()
+        assert task.cancelled()
+        assert service._sync_task is None
+        assert service._transient_tasks == set()
+
+    asyncio.run(scenario())
+
+
 def test_send_message_without_context_returns_false(data_root) -> None:
     service = make_service(data_root)
     assert asyncio.run(service._send_message("umo", "text")) is False
