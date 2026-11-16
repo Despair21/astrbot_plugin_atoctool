@@ -75,7 +75,7 @@ function svgIcon(name, className) {
   svg.setAttribute("viewBox", "0 0 16 16");
   svg.setAttribute("aria-hidden", "true");
   const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
-  use.setAttribute("href", "./assets/icons.svg#" + name);
+  use.setAttribute("href", "#" + name);
   svg.append(use);
   return svg;
 }
@@ -1081,14 +1081,14 @@ async function requestActivities() {
 /* Sources tab */
 function sourceRetryButton(item) {
   const retrying = state.sync.inflight && state.sources.pendingSource === item.sourceId;
-  const disabled = item.status === "disabled";
+  if (!retrying && item.status !== "stale" && item.status !== "error") return null;
   const label = retrying ? t("sources.retrying", "重试中…") : t("sources.retry", "重试同步");
   const button = el("button", {
     className: "c-btn c-btn--small", type: "button", text: label,
     dataset: { retrySource: item.sourceId, focusKey: "source-retry:" + item.sourceId },
   });
-  if (disabled || retrying) button.disabled = true;
-  if (!disabled) button.setAttribute("aria-label", label + " · " + item.sourceId);
+  if (retrying) button.disabled = true;
+  button.setAttribute("aria-label", label + " · " + item.sourceId);
   return button;
 }
 
@@ -1097,30 +1097,52 @@ function sourceDiagnostics(item) {
   appendFact(dl, t("sources.details.priority", "优先级"), item.priority === null ? null : String(item.priority));
   appendFact(dl, t("sources.details.enabled", "启用"), item.enabled ? t("sources.details.yes", "有") : t("sources.details.no", "无"));
   appendFact(dl, t("sources.details.lastChecked", "最近检查"), timeNode(item.lastChecked));
-  appendFact(dl, t("sources.details.httpStatus", "HTTP 状态"), item.httpStatus === null ? null : String(item.httpStatus));
+  if (item.httpStatus !== null && item.httpStatus > 0) {
+    appendFact(dl, t("sources.details.httpStatus", "HTTP 状态"), String(item.httpStatus));
+  }
   appendFact(dl, t("sources.details.etag", "ETag"), item.etagPresent ? t("sources.details.yes", "有") : t("sources.details.no", "无"));
   appendFact(dl, t("sources.details.lastModified", "Last-Modified"), item.lastModifiedPresent ? t("sources.details.yes", "有") : t("sources.details.no", "无"));
-  appendFact(dl, t("sources.details.nextRetryAt", "下次重试"), timeNode(item.nextRetryAt));
-  appendFact(dl, t("sources.details.lastError", "最后错误"), item.lastError, { pre: true });
+  if (item.nextRetryAt !== null && item.nextRetryAt > 0) {
+    appendFact(dl, t("sources.details.nextRetryAt", "下次重试"), timeNode(item.nextRetryAt));
+  }
+  if (item.lastError) appendFact(dl, t("sources.details.lastError", "最后错误"), item.lastError, { pre: true });
   appendFact(dl, t("sources.table.adapter", "适配器"), item.adapter, { mono: true });
   appendFact(dl, t("sources.table.url", "地址"), item.url, { mono: true, pre: true });
   return dl;
 }
 
-function sourceDetails(item) {
-  const details = el("details", { className: "c-details", dataset: { sourceDetails: item.sourceId } });
-  if (state.sources.expanded.has(item.sourceId)) details.open = true;
-  details.append(
-    el("summary", { className: "c-details__summary", text: t("sources.details.title", "诊断详情"), dataset: { focusKey: "source-diagnostics:" + item.sourceId } }),
-    sourceDiagnostics(item),
+function sourceDiagToggle(item) {
+  const expanded = state.sources.expanded.has(item.sourceId);
+  const button = el("button", {
+    className: "c-linkbtn c-diag__toggle", type: "button",
+    dataset: { diagToggle: item.sourceId, focusKey: "source-diag:" + item.sourceId },
+    "aria-controls": "diag-" + item.sourceId,
+    "aria-expanded": expanded ? "true" : "false",
+  });
+  button.append(
+    el("span", { className: "c-diag__chev", "aria-hidden": "true" }),
+    el("span", { text: t("sources.details.title", "诊断详情") }),
   );
-  return details;
+  return button;
+}
+
+function sourceDiagPanel(item, domId) {
+  const attrs = { className: "c-diag__panel" };
+  if (domId) attrs.id = domId;
+  return el("div", attrs,
+    el("p", { className: "c-diag__title", text: t("sources.details.title", "诊断详情") + " · " + item.sourceId }),
+    sourceDiagnostics(item));
 }
 
 function sourceActions(item) {
-  const wrap = el("div", { className: "c-card__actions" }, sourceRetryButton(item));
-  if (item.status === "disabled") wrap.append(el("p", { className: "c-small", text: t("sources.disabledNote", "该数据源已禁用，需在插件配置中启用。") }));
-  return wrap;
+  const retry = sourceRetryButton(item);
+  if (retry) return el("div", { className: "c-card__actions" }, retry);
+  if (item.status === "disabled") {
+    return el("div", { className: "c-card__actions" },
+      el("p", { className: "c-small", text: t("sources.disabledNote", "该数据源已禁用，需在插件配置中启用。") }));
+  }
+  return el("div", { className: "c-card__actions" },
+    el("span", { className: "c-small", text: t("common.na", "—") }));
 }
 
 function sourcesTable(items) {
@@ -1134,10 +1156,13 @@ function sourcesTable(items) {
   for (const [key, fallback, keyPath] of columns) headRow.append(el("th", { scope: "col", text: t(keyPath || "sources.table." + key, fallback) }));
   table.append(el("thead", {}, headRow));
   for (const item of items) {
+    const expanded = state.sources.expanded.has(item.sourceId);
     const body = el("tbody", { dataset: { sourceId: item.sourceId } });
     const row = el("tr", { className: "c-row" });
     row.append(
-      el("th", { scope: "row", className: "c-table__mono", text: item.sourceId }),
+      el("th", { scope: "row", className: "c-sourcecell" },
+        el("span", { className: "c-table__mono", text: item.sourceId }),
+        sourceDiagToggle(item)),
       el("td", { text: gameLabel(item.gameId) }),
       el("td", {}, statusChip(SOURCE_TONE[item.status] || "neutral", sourceStatusLabel(item.status))),
       el("td", {}, timeNode(item.lastSuccess)),
@@ -1145,7 +1170,10 @@ function sourcesTable(items) {
       el("td", { className: "c-num", text: String(item.activityCount) }),
       el("td", { className: "c-actions" }, sourceActions(item)),
     );
-    body.append(row, el("tr", { className: "c-row c-row--diag" }, el("td", { colspan: "7" }, sourceDetails(item))));
+    const diagRow = el("tr", { className: "c-row c-row--diag", id: "diag-" + item.sourceId });
+    if (!expanded) diagRow.hidden = true;
+    diagRow.append(el("td", { colspan: "7" }, sourceDiagPanel(item, null)));
+    body.append(row, diagRow);
     table.append(body);
   }
   return el("div", { className: "c-tablewrap" }, table);
@@ -1157,11 +1185,15 @@ function sourceCard(item) {
   appendFact(dl, t("sources.table.lastSuccess", "最近成功"), timeNode(item.lastSuccess));
   appendFact(dl, t("sources.table.failures", "连续失败"), String(item.consecutiveFailures));
   appendFact(dl, t("sources.table.activityCount", "活动数"), String(item.activityCount));
+  const panel = sourceDiagPanel(item, "diag-" + item.sourceId);
+  if (!state.sources.expanded.has(item.sourceId)) panel.hidden = true;
   const block = el("div", { className: "c-card__body" },
     el("div", { className: "c-card__head" },
       el("span", { className: "c-card__headtitle", text: item.sourceId }),
       statusChip(SOURCE_TONE[item.status] || "neutral", sourceStatusLabel(item.status))),
-    dl, sourceDetails(item), sourceActions(item));
+    dl,
+    el("div", { className: "c-card__diag" }, sourceDiagToggle(item), panel),
+    sourceActions(item));
   return el("li", { className: "c-card" }, block);
 }
 
@@ -1896,23 +1928,30 @@ function showAuthState() {
 
 /* Event wiring */
 function onSourcesPanelClick(event) {
-  const button = event.target.closest("[data-retry-source]");
-  if (!button) return;
-  const data = state.sources.data;
-  if (!data) return;
-  const item = data.items.find((source) => source.sourceId === button.dataset.retrySource);
-  if (item) openSourceRetry(item);
+  const retryButton = event.target.closest("[data-retry-source]");
+  if (retryButton) {
+    const data = state.sources.data;
+    if (!data) return;
+    const item = data.items.find((source) => source.sourceId === retryButton.dataset.retrySource);
+    if (item) openSourceRetry(item);
+    return;
+  }
+  const diagButton = event.target.closest("[data-diag-toggle]");
+  if (!diagButton) return;
+  const sourceId = diagButton.dataset.diagToggle;
+  const open = !state.sources.expanded.has(sourceId);
+  if (open) state.sources.expanded.add(sourceId);
+  else state.sources.expanded.delete(sourceId);
+  const panel = document.getElementById("diag-" + sourceId);
+  if (panel) panel.hidden = !open;
+  for (const button of document.querySelectorAll("[data-diag-toggle]")) {
+    if (button.dataset.diagToggle === sourceId) button.setAttribute("aria-expanded", open ? "true" : "false");
+  }
 }
 
 function onDetailsToggle(event) {
   const target = event.target;
   if (!target || target.tagName !== "DETAILS") return;
-  const sourceId = target.dataset.sourceDetails;
-  if (sourceId) {
-    if (target.open) state.sources.expanded.add(sourceId);
-    else state.sources.expanded.delete(sourceId);
-    return;
-  }
   const jobKey = target.dataset.jobDetails;
   if (jobKey) {
     if (target.open) state.reminders.expanded.add(jobKey);
@@ -1957,10 +1996,7 @@ function bindStaticEvents() {
   if (fatalAction) fatalAction.addEventListener("click", reloadView);
 
   const sourcesPanel = panelEl("sources");
-  if (sourcesPanel) {
-    sourcesPanel.addEventListener("click", onSourcesPanelClick);
-    sourcesPanel.addEventListener("toggle", onDetailsToggle, true);
-  }
+  if (sourcesPanel) sourcesPanel.addEventListener("click", onSourcesPanelClick);
   const remindersPanel = panelEl("reminders");
   if (remindersPanel) remindersPanel.addEventListener("toggle", onDetailsToggle, true);
 
