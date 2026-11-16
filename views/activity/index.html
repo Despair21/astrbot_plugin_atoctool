@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>游戏活动同步</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div id="app" class="c-app">
+  <header class="c-page-header">
+    <div class="c-page-header__titles">
+      <h1 id="page-title" class="c-page-header__title">游戏活动同步</h1>
+      <p id="page-sub" class="c-page-header__sub">—</p>
+    </div>
+    <div class="c-page-header__actions">
+      <span id="sync-chip" class="c-chip c-chip--neutral" role="status" aria-live="polite"><span class="c-chip__dot" aria-hidden="true"></span><span id="sync-chip-text">同步空闲</span></span>
+      <button id="btn-refresh" class="c-iconbtn" type="button" aria-label="刷新当前数据（只读）" title="刷新当前数据（只读）">
+        <svg class="c-icon" viewBox="0 0 16 16" aria-hidden="true"><use href="./assets/icons.svg#i-refresh"></use></svg>
+      </button>
+      <button id="btn-sync" class="c-btn c-btn--primary" type="button" aria-disabled="false">手动同步</button>
+    </div>
+  </header>
+
+  <nav id="tabbar" class="c-tabbar" role="tablist" aria-label="视图分区">
+    <button id="tab-overview" class="c-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="panel-overview" tabindex="0" data-tab="overview">总览</button>
+    <button id="tab-activities" class="c-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-activities" tabindex="-1" data-tab="activities">活动</button>
+    <button id="tab-sources" class="c-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-sources" tabindex="-1" data-tab="sources">数据源</button>
+    <button id="tab-reminders" class="c-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-reminders" tabindex="-1" data-tab="reminders">提醒</button>
+  </nav>
+
+  <main class="c-main">
+    <p id="stale-notice" class="c-stale" role="status" hidden></p>
+    <div id="error-region" class="c-error-region" hidden></div>
+
+    <section id="panel-overview" class="c-panel" role="tabpanel" aria-labelledby="tab-overview" aria-busy="true">
+      <div class="c-skeleton" aria-hidden="true">
+        <div class="c-skeleton__row">
+          <span class="c-sk c-sk--kpi"></span><span class="c-sk c-sk--kpi"></span><span class="c-sk c-sk--kpi"></span><span class="c-sk c-sk--kpi"></span>
+        </div>
+        <div class="c-skeleton__row">
+          <span class="c-sk c-sk--panel"></span><span class="c-sk c-sk--panel"></span>
+        </div>
+      </div>
+      <span class="sr-only">数据加载中</span>
+    </section>
+    <section id="panel-activities" class="c-panel" role="tabpanel" aria-labelledby="tab-activities" aria-busy="true" hidden></section>
+    <section id="panel-sources" class="c-panel" role="tabpanel" aria-labelledby="tab-sources" aria-busy="true" hidden></section>
+    <section id="panel-reminders" class="c-panel" role="tabpanel" aria-labelledby="tab-reminders" aria-busy="true" hidden></section>
+  </main>
+</div>
+
+<div id="fatal-state" class="c-fatal" role="alert" hidden>
+  <svg class="c-fatal__icon" viewBox="0 0 16 16" aria-hidden="true"><use href="./assets/icons.svg#i-alert"></use></svg>
+  <h1 id="fatal-title">未检测到 AstrBot 视图桥接</h1>
+  <p id="fatal-body"></p>
+  <button id="fatal-action" class="c-btn c-btn--primary" type="button">重载页面</button>
+</div>
+
+<div id="toast-region" class="c-toast-region" role="status" aria-live="polite"></div>
+
+<dialog id="detail-dialog" class="c-drawer" aria-labelledby="detail-title">
+  <div class="c-drawer__inner">
+    <div class="c-drawer__head">
+      <h2 id="detail-title" class="c-drawer__title">活动详情</h2>
+      <button id="detail-close" class="c-iconbtn" type="button" aria-label="关闭">
+        <svg class="c-icon" viewBox="0 0 16 16" aria-hidden="true"><use href="./assets/icons.svg#i-close"></use></svg>
+      </button>
+    </div>
+    <div id="detail-body" class="c-drawer__body"></div>
+  </div>
+</dialog>
+
+<dialog id="confirm-dialog" class="c-confirm" aria-labelledby="confirm-title">
+  <h2 id="confirm-title" class="c-confirm__title"></h2>
+  <p id="confirm-body" class="c-confirm__body"></p>
+  <div id="confirm-extra" class="c-confirm__extra"></div>
+  <div class="c-confirm__actions">
+    <button id="confirm-cancel" class="c-btn" type="button">取消</button>
+    <button id="confirm-ok" class="c-btn c-btn--primary" type="button">确认</button>
+  </div>
+</dialog>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
