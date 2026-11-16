@@ -7,6 +7,8 @@ be unit tested without a running AstrBot instance.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import timedelta, timezone, tzinfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 SCHEMA_VERSION = 1
 
@@ -54,6 +56,34 @@ REMINDER_STATUSES: tuple[str, ...] = ("pending", "sent", "skipped", "failed")
 DEFAULT_REMIND_DAYS: tuple[int, ...] = (1,)
 
 GAME_ID_PATTERN = r"^[a-z0-9_]{1,32}$"
+
+_FIXED_OFFSET_HOURS = {
+    "asia/shanghai": 8,
+    "asia/chongqing": 8,
+    "prc": 8,
+    "etc/gmt-8": 8,
+}
+
+
+def load_zone(name: str) -> tzinfo:
+    """Load a timezone, falling back to a fixed offset when tzdata is absent.
+
+    Args:
+        name: IANA timezone name.
+
+    Returns:
+        A tzinfo instance.
+
+    Raises:
+        ValueError: When the zone is unknown and has no safe fixed-offset alias.
+    """
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError, OSError):
+        offset = _FIXED_OFFSET_HOURS.get(str(name or "").strip().lower())
+        if offset is not None:
+            return timezone(timedelta(hours=offset))
+        raise ValueError(f"unknown_timezone:{name}") from None
 
 DTO_FIELDS: tuple[str, ...] = (
     "key",

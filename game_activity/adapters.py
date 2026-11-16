@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import datetime, timedelta, timezone, tzinfo
+from datetime import datetime, tzinfo
 from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .fetch import FetchError, validate_source_url
 from .ids import normalize_name
@@ -16,15 +15,10 @@ from .models import (
     GAME_NAMES,
     NormalizedActivity,
     SourceConfig,
+    load_zone,
 )
 
 _TIME_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d")
-_FIXED_OFFSET_HOURS = {
-    "asia/shanghai": 8,
-    "asia/chongqing": 8,
-    "prc": 8,
-    "etc/gmt-8": 8,
-}
 _MAP_KEYS = (
     "map_activities",
     "map_name",
@@ -38,27 +32,6 @@ _MAP_KEYS = (
 )
 _SOURCE_ID_RE = re.compile(r"[^a-z0-9_]+")
 _ASCII_ID_RE = re.compile(r"[^a-z0-9]+")
-
-
-def load_zone(name: str) -> tzinfo:
-    """Load a timezone, falling back to a fixed offset when tzdata is absent.
-
-    Args:
-        name: IANA timezone name.
-
-    Returns:
-        A tzinfo instance.
-
-    Raises:
-        ValueError: When the zone is unknown and has no safe fixed-offset alias.
-    """
-    try:
-        return ZoneInfo(name)
-    except (ZoneInfoNotFoundError, ValueError, OSError):
-        offset = _FIXED_OFFSET_HOURS.get(str(name or "").strip().lower())
-        if offset is not None:
-            return timezone(timedelta(hours=offset))
-        raise ValueError(f"unknown_timezone:{name}") from None
 
 
 def parse_upstream_time(value: Any, tz: tzinfo) -> tuple[int, str]:
