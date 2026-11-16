@@ -342,4 +342,4 @@ def test_render_subscriptions_and_changes() -> None:
     assert "崩坏：星穹铁道" in text
     assert render_subscription_change("starrail", True).startswith("已订阅")
     assert render_subscription_change("starrail", False).startswith("已取消订阅")
-    assert "/活动 列表" in HELP_TEXT
+    assert "/活动列表 <游戏>" in HELP_TEXT

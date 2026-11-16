@@ -1,4 +1,4 @@
-"""Pure text rendering and argument helpers for the /活动 command group."""
+"""Pure text rendering and argument helpers for the activity commands."""
 
 from __future__ import annotations
 
@@ -111,11 +111,11 @@ def render_list(activities: list[dict[str, Any]], max_lines: int = 20) -> str:
     rows = [item for item in activities if item.get("status") != "removed"]
     rows.sort(key=_sort_key)
     if not rows:
-        return "暂无活动数据。管理员可发送 /活动 同步 手动同步。"
+        return "暂无活动数据。管理员可发送 /活动同步 手动同步。"
     lines = _grouped_lines(rows, max_lines)
     if len(rows) > max_lines:
         lines.append(
-            f"…共 {len(rows)} 条，完整列表请使用 /活动 列表 或 Dashboard 查看。"
+            f"…共 {len(rows)} 条，完整列表请使用 /活动列表 或 Dashboard 查看。"
         )
     return truncate_text("活动列表：\n" + "\n".join(lines))
 
@@ -197,7 +197,7 @@ def render_sync_result(result: dict[str, Any]) -> str:
         "已触发同步："
         f"共 {result.get('sources', 0)} 个数据源，"
         f"成功 {result.get('succeeded', 0)} 个，失败 {result.get('failed', 0)} 个。"
-        "可发送 /活动 状态 查看结果。"
+        "可发送 /活动状态 查看结果。"
     )
 
 
@@ -208,7 +208,7 @@ def render_subscriptions(
     """Render the games the current session subscribed to."""
     games = [game for game, umos in subscriptions.items() if umo in umos]
     if not games:
-        return "当前会话尚未订阅任何游戏。发送 /活动 订阅 <游戏> 开启提醒。"
+        return "当前会话尚未订阅任何游戏。发送 /活动订阅 <游戏> 开启提醒。"
     names = [GAME_NAMES.get(game, game) for game in games]
     return "当前会话订阅：" + "、".join(names)
 
@@ -244,13 +244,14 @@ def render_subscription_change(game_id: str, subscribed: bool) -> str:
 
 HELP_TEXT = (
     "游戏活动日历指令：\n"
-    "/活动 列表 [游戏] — 查看活动\n"
-    "/活动 今日 [游戏] — 今日与 24 小时内开始的活动\n"
-    "/活动 详情 <名称> — 查看活动详情\n"
-    "/活动 状态 — 同步状态与数据源健康\n"
-    "/活动 同步 [游戏] — 手动同步（管理员）\n"
-    "/活动 订阅 [游戏] — 订阅/查看结束提醒\n"
-    "/活动 取消订阅 [游戏] — 取消提醒订阅"
+    "/活动 — 查看帮助\n"
+    "/活动列表 <游戏> — 查看活动（游戏可选）\n"
+    "/活动今日 <游戏> — 今日与 24 小时内开始的活动\n"
+    "/活动详情 <名称或ID> — 查看活动详情\n"
+    "/活动状态 — 同步状态与数据源健康\n"
+    "/活动同步 <游戏> — 手动同步（管理员）\n"
+    "/活动订阅 <游戏> — 订阅/查看结束提醒\n"
+    "/活动取消订阅 <游戏> — 取消提醒订阅"
 )
 
 

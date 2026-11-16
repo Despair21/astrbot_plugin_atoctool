@@ -23,5 +23,9 @@ All notable changes to this plugin are documented here. The format follows
 
 ### Changed
 
+- Flattened the command set to single-token names (`/活动列表`, `/活动今日`,
+  `/活动详情`, `/活动同步`, `/活动状态`, `/活动订阅`, `/活动取消订阅`); the old
+  spaced syntax (for example `/活动 列表`) is deprecated and now falls back to
+  help. English aliases are now `activity_*`.
 - Replaced the bundled `helloworld` template with the game activity plugin
   (`version: 0.1.0`, verified against AstrBot 4.29.4 stable).

@@ -504,6 +504,6 @@ class ReminderEngine:
         hidden = len(lines) - MAX_LINES
         body = "\n".join(lines[:MAX_LINES])
         if hidden > 0:
-            body += f"\n另有 {hidden} 条提醒未显示，请使用 /活动 列表 查看。"
+            body += f"\n另有 {hidden} 条提醒未显示，请使用 /活动列表 查看。"
         text = "活动即将结束提醒：\n" + body
         return text[:MAX_TEXT_CHARS]

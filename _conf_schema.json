@@ -115,7 +115,7 @@
       "target_umos": {
         "type": "list",
         "description": "固定提醒会话",
-        "hint": "留空则使用 /活动 订阅 记录的会话",
+        "hint": "留空则使用 /活动订阅 记录的会话",
         "default": [],
         "_special": "umo"
       },

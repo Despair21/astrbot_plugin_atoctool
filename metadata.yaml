@@ -1,7 +1,7 @@
 name: astrbot_plugin_game_activity
 display_name: 游戏活动日历
 short_desc: 同步六款游戏活动日历，结束前提醒
-desc: 按游戏持久化活动快照，跨源合并去重，支持 /活动 指令、Dashboard 视图与活动结束前提醒。
+desc: 按游戏持久化活动快照，跨源合并去重，支持 /活动、/活动列表 等指令、Dashboard 视图与活动结束前提醒。
 version: 0.1.0
 author: Despair21
 repo: https://github.com/Despair21/astrbot_plugin_game_activity
