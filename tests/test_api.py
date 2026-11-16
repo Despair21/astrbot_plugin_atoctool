@@ -265,7 +265,23 @@ def test_render_list_groups_and_truncates() -> None:
             "end_iso": "2026-11-20T03:59:59+08:00",
         },
         {
-            "key": "starrail#a2",
+            "key": "genshin#a2",
+            "game_id": "genshin",
+            "name": "活动二",
+            "status": "active",
+            "end_epoch": 20,
+            "end_iso": "2026-11-21T03:59:59+08:00",
+        },
+        {
+            "key": "starrail#a3",
+            "game_id": "starrail",
+            "name": "活动三",
+            "status": "upcoming",
+            "end_epoch": 30,
+            "end_iso": "2026-11-22T03:59:59+08:00",
+        },
+        {
+            "key": "starrail#a4",
             "game_id": "starrail",
             "name": "已下架",
             "status": "removed",
@@ -274,9 +290,11 @@ def test_render_list_groups_and_truncates() -> None:
         },
     ]
     text = render_list(activities)
-    assert "活动一" in text
+    assert "活动一" in text and "活动二" in text and "活动三" in text
     assert "已下架" not in text
-    assert "崩坏：星穹铁道" in text
+    assert text.count("【崩坏：星穹铁道】") == 1
+    assert text.count("【原神】") == 1
+    assert text.index("【崩坏：星穹铁道】") < text.index("【原神】")
     assert render_list([]).startswith("暂无活动数据")
 
 

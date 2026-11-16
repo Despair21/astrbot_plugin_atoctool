@@ -76,20 +76,33 @@ def _sort_key(activity: dict[str, Any]) -> tuple[int, int, str]:
     )
 
 
-def _list_lines(activities: list[dict[str, Any]], max_lines: int) -> list[str]:
+def _line(activity: dict[str, Any]) -> str:
+    icon = STATUS_ICONS.get(str(activity.get("status") or ""), "•")
+    label = STATUS_LABELS.get(str(activity.get("status") or ""), "")
+    return (
+        f"{icon} {short_text(activity.get('name'))} | "
+        f"{format_iso_short(activity.get('end_iso'))} 结束 · {label}"
+    )
+
+
+def _grouped_lines(activities: list[dict[str, Any]], max_lines: int) -> list[str]:
+    """Group activities by game, ordered by the earliest ending game."""
+    by_game: dict[str, list[dict[str, Any]]] = {}
+    for activity in activities:
+        by_game.setdefault(str(activity.get("game_id") or ""), []).append(activity)
+    game_order = sorted(
+        by_game,
+        key=lambda game: min(int(item.get("end_epoch") or 0) for item in by_game[game]),
+    )
     lines: list[str] = []
-    current_game = ""
-    for activity in activities[:max_lines]:
-        game_id = str(activity.get("game_id") or "")
-        if game_id != current_game:
-            current_game = game_id
-            lines.append(f"【{GAME_NAMES.get(game_id, game_id)}】")
-        icon = STATUS_ICONS.get(str(activity.get("status") or ""), "•")
-        label = STATUS_LABELS.get(str(activity.get("status") or ""), "")
-        lines.append(
-            f"{icon} {short_text(activity.get('name'))} | "
-            f"{format_iso_short(activity.get('end_iso'))} 结束 · {label}",
-        )
+    for game in game_order:
+        if len(lines) >= max_lines:
+            break
+        lines.append(f"【{GAME_NAMES.get(game, game)}】")
+        for activity in sorted(by_game[game], key=_sort_key):
+            if len(lines) >= max_lines:
+                break
+            lines.append(_line(activity))
     return lines
 
 
@@ -99,7 +112,7 @@ def render_list(activities: list[dict[str, Any]], max_lines: int = 20) -> str:
     rows.sort(key=_sort_key)
     if not rows:
         return "暂无活动数据。管理员可发送 /活动 同步 手动同步。"
-    lines = _list_lines(rows, max_lines)
+    lines = _grouped_lines(rows, max_lines)
     if len(rows) > max_lines:
         lines.append(
             f"…共 {len(rows)} 条，完整列表请使用 /活动 列表 或 Dashboard 查看。"
@@ -121,7 +134,7 @@ def render_today(activities: list[dict[str, Any]], now: int) -> str:
     rows.sort(key=_sort_key)
     if not rows:
         return "今天没有进行中的活动，也没有 24 小时内开始的活动。"
-    lines = _list_lines(rows, 20)
+    lines = _grouped_lines(rows, 20)
     if len(rows) > 20:
         lines.append(f"…共 {len(rows)} 条。")
     return truncate_text("今日活动：\n" + "\n".join(lines))
