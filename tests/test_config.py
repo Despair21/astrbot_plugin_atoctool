@@ -1,0 +1,477 @@
+"""Tests for configuration normalization, queries and manual sync control."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import sys
+import types
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import pytest
+
+from game_activity.service import GameActivityService, normalize_config
+
+LOGGER = logging.getLogger("test_config")
+TZ = timezone(timedelta(hours=8))
+NOW = int(datetime(2026, 11, 19, 12, 0, tzinfo=TZ).timestamp())
+I18N_DIR = Path(__file__).resolve().parent.parent / ".astrbot-plugin" / "i18n"
+REQUIRED_I18N_PATHS = (
+    ("config", "view", "show_timezone", "description"),
+    ("views", "activity", "jobStatus", "sent"),
+    ("views", "activity", "reminders", "summary", "sent"),
+    ("views", "activity", "reminders", "sentNote"),
+    ("views", "activity", "reminders", "catchUp"),
+    ("views", "activity", "reminders", "catchUpHint"),
+)
+
+
+def make_service(data_root, config=None, **kwargs) -> GameActivityService:
+    service = GameActivityService(
+        config=config or {},
+        data_root=data_root / "plugin_data",
+        logger=LOGGER,
+        clock=lambda: NOW,
+    )
+    for key, value in kwargs.items():
+        setattr(service, key, value)
+    return service
+
+
+def make_activity(
+    key: str = "starrail#a1",
+    *,
+    source_id: str = "starrail",
+    game_id: str = "starrail",
+    name: str = "活动",
+    status: str = "active",
+    start: int = NOW - 86400,
+    end: int = NOW + 5 * 86400,
+    removed_at: int | None = None,
+) -> dict:
+    return {
+        "key": key,
+        "raw_id": key.split("#", 1)[-1],
+        "source_id": source_id,
+        "game_id": game_id,
+        "name": name,
+        "description": "描述",
+        "kind": None,
+        "start_iso": datetime.fromtimestamp(start, TZ).isoformat(),
+        "end_iso": datetime.fromtimestamp(end, TZ).isoformat(),
+        "start_epoch": start,
+        "end_epoch": end,
+        "cover_url": "",
+        "content_hash": "h",
+        "status": status,
+        "first_seen_at": start,
+        "last_seen_at": start,
+        "removed_at": removed_at,
+    }
+
+
+def snapshot(activities: list[dict], game_id: str = "starrail") -> dict:
+    return {
+        "schema_version": 1,
+        "game_id": game_id,
+        "game_name": game_id,
+        "last_sync_at": NOW,
+        "activities": activities,
+    }
+
+
+def test_normalize_config_defaults() -> None:
+    config = normalize_config({})
+    assert config["enabled"] is True
+    assert config["sync_interval_minutes"] == 30
+    assert config["remind_days"] == [1, 3]
+    assert config["target_umos"] == []
+    assert config["retention_days"] == 7
+    assert config["poll_seconds"] == 30
+
+
+def test_normalize_config_clamps_invalid_values() -> None:
+    config = normalize_config(
+        {
+            "general": {
+                "enabled": "yes",
+                "sync_interval_minutes": 1,
+                "request_timeout_seconds": 999,
+                "max_response_kb": 10,
+                "use_t2i": 1,
+            },
+            "reminder": {
+                "remind_days_before": "bad,-3",
+                "max_grace_hours": 9999,
+                "max_sends_per_tick": 0,
+                "target_umos": ["umo_a", "", 5],
+            },
+            "view": {"poll_seconds": 1, "show_covers": False},
+            "advanced": {"retention_days": 999, "allow_insecure_http": True},
+        },
+    )
+    assert config["enabled"] is True
+    assert config["sync_interval_minutes"] == 5
+    assert config["request_timeout_seconds"] == 60
+    assert config["max_response_kb"] == 256
+    assert config["use_t2i"] is False
+    assert config["remind_days"] == [1]
+    assert config["max_grace_hours"] == 168
+    assert config["max_sends_per_tick"] == 1
+    assert config["target_umos"] == ["umo_a", "5"]
+    assert config["poll_seconds"] == 10
+    assert config["show_covers"] is False
+    assert config["retention_days"] == 90
+    assert config["allow_insecure_http"] is True
+
+
+def test_show_timezone_defaults_off_and_is_exposed_in_overview(data_root) -> None:
+    assert normalize_config({})["show_timezone"] is False
+    enabled = normalize_config({"view": {"show_timezone": True}})
+    assert enabled["show_timezone"] is True
+    service = make_service(data_root, config={"view": {"show_timezone": True}})
+    assert service.overview_dto()["show_timezone"] is True
+    default_service = make_service(data_root / "default")
+    assert default_service.overview_dto()["show_timezone"] is False
+
+
+def _load_i18n(locale: str) -> dict:
+    return json.loads((I18N_DIR / f"{locale}.json").read_text(encoding="utf-8"))
+
+
+def _nested(payload: dict, path: tuple[str, ...]):
+    node = payload
+    for key in path:
+        assert isinstance(node, dict), f"i18n path is not an object: {path}"
+        assert key in node, f"missing i18n key: {path}"
+        node = node[key]
+    return node
+
+
+def test_i18n_declares_view_timezone_and_reminder_keys() -> None:
+    for locale in ("zh-CN", "en-US"):
+        payload = _load_i18n(locale)
+        for path in REQUIRED_I18N_PATHS:
+            assert _nested(payload, path)
+        view = _nested(payload, ("views", "activity"))
+        zh = locale == "zh-CN"
+        assert view["jobStatus"]["sent"] == ("已提交" if zh else "Submitted")
+        assert view["reminders"]["summary"]["sent"] == ("已提交" if zh else "Submitted")
+        assert view["activities"]["table"]["updated"] == ("同步时间" if zh else "Synced at")
+        assert view["detail"]["fields"]["lastSeen"] == ("同步时间" if zh else "Synced at")
+        assert view["sources"]["table"]["lastSuccess"] == ("同步时间" if zh else "Synced at")
+        assert view["sources"]["details"]["title"] == ("详情" if zh else "Details")
+
+
+def test_zh_i18n_drops_ambiguous_labels() -> None:
+    zh_text = (I18N_DIR / "zh-CN.json").read_text(encoding="utf-8")
+    for old in ("最近发现", "最近成功", "诊断详情"):
+        assert old not in zh_text
+
+
+def test_service_defaults_to_six_sources(data_root) -> None:
+    service = make_service(data_root)
+    assert len(service.sources) == 6
+    assert all(source.enabled for source in service.sources)
+
+
+def test_activities_dto_filters_and_clamps(data_root) -> None:
+    service = make_service(
+        data_root,
+        snapshots={
+            "starrail": snapshot(
+                [
+                    make_activity(),
+                    make_activity(
+                        "starrail#a2",
+                        name="即将结束",
+                        end=NOW + 3600,
+                    ),
+                    make_activity(
+                        "starrail#a3",
+                        name="已下架",
+                        removed_at=NOW - 60,
+                    ),
+                ],
+            ),
+        },
+    )
+    total, rows = service.activities_dto(limit=1)
+    assert total == 3
+    assert len(rows) == 1
+    keys = {"key", "is_primary", "merged_sources", "status"}
+    assert keys <= set(rows[0])
+    _total, ending = service.activities_dto(status="ending_soon")
+    assert [row["name"] for row in ending] == ["即将结束"]
+    _total, searched = service.activities_dto(query="即将")
+    assert [row["name"] for row in searched] == ["即将结束"]
+    _total, other_game = service.activities_dto(game="genshin")
+    assert other_game == []
+
+
+def test_overview_counts_and_source_health(data_root) -> None:
+    service = make_service(
+        data_root,
+        snapshots={
+            "starrail": snapshot(
+                [
+                    make_activity(),
+                    make_activity("starrail#a2", end=NOW + 3600),
+                    make_activity("starrail#a3", removed_at=NOW - 60),
+                ],
+            ),
+        },
+        source_states={
+            "starrail": {"status": "ok", "last_error": ""},
+            "genshin": {"status": "error", "last_error": "boom"},
+        },
+    )
+    overview = service.overview_dto()
+    assert overview["schema_version"] == 1
+    assert overview["counts"]["activities"] == 2
+    assert overview["counts"]["active"] == 1
+    assert overview["counts"]["ending_soon"] == 1
+    assert overview["counts"]["removed"] == 1
+    assert overview["counts"]["sources"] == 6
+    assert overview["source_health"]["total"] == 6
+    assert overview["source_health"]["ok"] == 1
+    assert overview["source_health"]["error"] == 1
+    assert overview["source_health"]["disabled"] == 0
+    assert overview["poll_seconds"] == 30
+
+
+def test_sources_dto_marks_disabled_and_state(data_root) -> None:
+    service = make_service(data_root)
+    service.sources[0].enabled = False
+    service.source_states = {"genshin": {"status": "ok", "etag": '"1"'}}
+    rows = service.sources_dto()
+    by_id = {row["source_id"]: row for row in rows}
+    assert by_id["genshin"]["enabled"] is False
+    assert by_id["genshin"]["status"] == "disabled"
+    assert by_id["genshin"]["etag_present"] is True
+    assert by_id["starrail"]["status"] == "stale"
+
+
+def test_reminders_dto_and_next_reminder(data_root) -> None:
+    activity = make_activity()
+    service = make_service(data_root, snapshots={"starrail": snapshot([activity])})
+    service.store.save_state(
+        "reminders",
+        {
+            "schema_version": 1,
+            "items": {
+                "starrail#a1#1": {
+                    "key": "starrail#a1#1",
+                    "game_id": "starrail",
+                    "source_id": "starrail",
+                    "raw_id": "a1",
+                    "activity_key": "starrail#a1",
+                    "threshold_days": 1,
+                    "fire_at_epoch": NOW + 60,
+                    "status": "pending",
+                    "attempts": 0,
+                    "last_error": "",
+                    "sent_at": None,
+                    "targets": {},
+                },
+            },
+        },
+    )
+    payload = service.reminders_dto()
+    assert payload["subscriptions"]["count"] == 0
+    assert payload["jobs"][0]["activity_name"] == "活动"
+    assert payload["jobs"][0]["status"] == "pending"
+    next_reminder = service.overview_dto()["next_reminder"]
+    assert next_reminder["threshold_days"] == 1
+    assert next_reminder["fire_at_iso"].endswith("+08:00")
+
+
+def test_subscribe_and_unsubscribe(data_root) -> None:
+    service = make_service(data_root)
+    service.subscribe("umo_a", "starrail")
+    service.subscribe("umo_a", "starrail")
+    service.subscribe("umo_b", "genshin")
+    assert service.subscriptions["starrail"] == ["umo_a"]
+    assert service.unsubscribe("umo_a", "starrail") == 1
+    assert "starrail" not in service.subscriptions
+    assert service.unsubscribe("umo_b") == 1
+    assert service.subscriptions == {}
+
+
+def test_health_dto_and_known_games(data_root) -> None:
+    service = make_service(data_root)
+    health = service.health_dto()
+    assert health["status"] == "ok"
+    assert health["data_dir_writable"] is True
+    assert "starrail" in service.known_games()
+
+
+def test_manual_sync_single_flight_and_rate_limit(data_root) -> None:
+    service = make_service(data_root)
+    calls: list[str | None] = []
+
+    async def fake_sync(game=None, *, manual=False):
+        calls.append(game)
+        await asyncio.sleep(0.05)
+        service.sync_status = "idle"
+        return {"sources": 0, "succeeded": 0, "failed": 0}
+
+    service.sync = fake_sync  # type: ignore[assignment]
+
+    async def scenario():
+        first = await service.start_manual_sync("starrail")
+        second = await service.start_manual_sync("starrail")
+        assert first == (True, 0)
+        assert second == (False, 0)
+        assert service._sync_task is not None
+        await service._sync_task
+        third = await service.start_manual_sync(None)
+        assert third[0] is False
+        assert third[1] > 0
+
+    asyncio.run(scenario())
+    assert calls == ["starrail"]
+
+
+def test_stop_cancels_in_flight_manual_sync(data_root) -> None:
+    service = make_service(data_root)
+    service.started = True
+
+    async def slow_sync(game=None, *, manual=False):
+        await asyncio.sleep(60)
+        return {"sources": 0, "succeeded": 0, "failed": 0}
+
+    service.sync = slow_sync  # type: ignore[assignment]
+
+    async def scenario():
+        started, _retry = await service.start_manual_sync("starrail")
+        assert started is True
+        task = service._sync_task
+        assert task is not None
+        assert task in service._transient_tasks
+        await service.stop()
+        assert task.done()
+        assert task.cancelled()
+        assert service._sync_task is None
+        assert service._transient_tasks == set()
+
+    asyncio.run(scenario())
+
+
+class _PlatformMeta:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+class _Platform:
+    def __init__(self, name: str) -> None:
+        self._name = name
+
+    def meta(self) -> _PlatformMeta:
+        return _PlatformMeta(self._name)
+
+
+class FakeSendContext:
+    def __init__(self, adapter_name: str) -> None:
+        self.adapter_name = adapter_name
+        self.requests: list[str] = []
+
+    def get_platform_inst(self, platform_id: str):
+        self.last_platform_id = platform_id
+        return _Platform(self.adapter_name)
+
+    async def send_message(self, umo, message_chain) -> bool:
+        self.requests.append(umo)
+        return True
+
+
+class FakeMessageChain:
+    def message(self, text: str) -> "FakeMessageChain":
+        self.text = text
+        return self
+
+
+@pytest.fixture()
+def message_chain_stub(monkeypatch) -> None:
+    """Replace the AstrBot import with a stub to avoid its data-dir side effect."""
+    module = types.ModuleType("astrbot.api.event")
+    module.MessageChain = FakeMessageChain
+    monkeypatch.setitem(sys.modules, "astrbot.api.event", module)
+
+
+def test_send_message_without_context_returns_false(data_root) -> None:
+    service = make_service(data_root)
+    assert asyncio.run(service._send_message("umo", "text")) is False
+
+
+@pytest.mark.parametrize("adapter_name", ["qq_official", "qq_official_webhook"])
+def test_send_message_warns_for_qq_official_group(
+    data_root,
+    caplog,
+    message_chain_stub,
+    adapter_name: str,
+) -> None:
+    context = FakeSendContext(adapter_name)
+    service = make_service(data_root, context=context)
+    with caplog.at_level(logging.WARNING):
+        delivered = asyncio.run(
+            service._send_message("qq_instance:GroupMessage:g1", "活动即将结束提醒"),
+        )
+    assert delivered is True
+    assert context.requests == ["qq_instance:GroupMessage:g1"]
+    assert "scene cache" in caplog.text
+    assert "活动即将结束提醒" not in caplog.text
+
+
+def test_send_message_skips_qq_warning_for_non_qq_group(
+    data_root,
+    caplog,
+    message_chain_stub,
+) -> None:
+    context = FakeSendContext("aiocqhttp")
+    service = make_service(data_root, context=context)
+    with caplog.at_level(logging.WARNING):
+        delivered = asyncio.run(
+            service._send_message("aiocqhttp:GroupMessage:g1", "text"),
+        )
+    assert delivered is True
+    assert caplog.text == ""
+
+
+def test_metadata_declares_qq_official_platforms() -> None:
+    metadata = (Path(__file__).resolve().parent.parent / "metadata.yaml").read_text(
+        encoding="utf-8",
+    )
+    platforms = {
+        line.strip().removeprefix("- ").strip()
+        for line in metadata.splitlines()
+        if line.strip().startswith("- ")
+    }
+    assert "qq_official" in platforms
+    assert "qq_official_webhook" in platforms
+
+
+def test_merged_activities_deduplicates_sources(data_root) -> None:
+    service = make_service(
+        data_root,
+        snapshots={
+            "starrail": snapshot(
+                [
+                    make_activity("source_a#a1", source_id="source_a"),
+                    make_activity("source_b#a1", source_id="source_b"),
+                ],
+            ),
+        },
+    )
+    service.sources = service.sources[:1] + [
+        source
+        for source in service.sources
+        if source.source_id != "starrail"
+    ]
+    service.sources[0].source_id = "source_a"
+    service.sources[0].game_id = "starrail"
+    rows = service.merged_activities()
+    assert len(rows) == 1
+    assert rows[0]["merged_sources"] == ["source_a#a1", "source_b#a1"]

@@ -1,0 +1,426 @@
+{
+  "metadata": {
+    "display_name": "Game Activity Calendar",
+    "short_desc": "Sync six game activity calendars and remind before they end",
+    "desc": "Persist per-game activity snapshots, merge activities across sources, and support /activity commands, a Dashboard view, and pre-end reminders."
+  },
+  "config": {
+    "general": {
+      "description": "General settings",
+      "enabled": {
+        "description": "Enable the plugin"
+      },
+      "sync_interval_minutes": {
+        "description": "Auto sync interval (minutes)"
+      },
+      "request_timeout_seconds": {
+        "description": "Request timeout (seconds)"
+      },
+      "max_response_kb": {
+        "description": "Response size limit (KB)"
+      },
+      "use_t2i": {
+        "description": "Try rendering long results as images"
+      }
+    },
+    "sources": {
+      "description": "Activity sources",
+      "hint": "Leave empty to enable the 6 built-in sources; entries are ordered by priority to pick the primary source",
+      "templates": {
+        "preset": {
+          "name": "Built-in source",
+          "hint": "Pick a game and optionally override the built-in URL",
+          "game": {
+            "description": "Game",
+            "labels": ["Genshin Impact", "Honkai: Star Rail", "Zenless Zone Zero", "Arknights", "Arknights: Endfield", "Wuthering Waves"]
+          },
+          "enabled": {
+            "description": "Enable this source"
+          },
+          "priority": {
+            "description": "Primary source priority (lower wins)"
+          },
+          "url": {
+            "description": "Override URL (empty uses the built-in one)"
+          },
+          "adapter": {
+            "description": "Adapter"
+          },
+          "timezone": {
+            "description": "Source time zone"
+          }
+        },
+        "generic": {
+          "name": "Custom JSON source",
+          "hint": "Map fields with dot paths; array indexes are not supported",
+          "source_id": {
+            "description": "Source id (unique, lowercase)"
+          },
+          "game_name": {
+            "description": "Game name (used to derive game_id)"
+          },
+          "url": {
+            "description": "JSON URL"
+          },
+          "adapter": {
+            "description": "Adapter"
+          },
+          "priority": {
+            "description": "Primary source priority"
+          },
+          "timezone": {
+            "description": "Source time zone"
+          },
+          "map_activities": {
+            "description": "Activities array path"
+          },
+          "map_name": {
+            "description": "Name path"
+          },
+          "map_description": {
+            "description": "Description path"
+          },
+          "map_start": {
+            "description": "Start time path"
+          },
+          "map_end": {
+            "description": "End time path"
+          },
+          "map_cover": {
+            "description": "Cover path"
+          },
+          "map_kind": {
+            "description": "Kind path (optional)"
+          },
+          "map_version": {
+            "description": "Version path (optional)"
+          },
+          "map_version_name": {
+            "description": "Version name path (optional)"
+          }
+        }
+      }
+    },
+    "reminder": {
+      "description": "Reminder settings",
+      "enabled": {
+        "description": "Enable pre-end reminders"
+      },
+      "remind_days_before": {
+        "description": "Days before the end (comma separated)",
+        "hint": "For example 3,1 reminds 3 days and 1 day before the end"
+      },
+      "remind_time": {
+        "description": "Reminder time (HH:MM, source time zone)"
+      },
+      "max_grace_hours": {
+        "description": "Grace window (hours, 0 = no catch-up)"
+      },
+      "target_umos": {
+        "description": "Fixed reminder sessions",
+        "hint": "Leave empty to use the sessions subscribed via /activity subscribe"
+      },
+      "max_sends_per_tick": {
+        "description": "Max sessions per tick"
+      }
+    },
+    "view": {
+      "description": "View settings",
+      "default_game": {
+        "description": "Default game id"
+      },
+      "poll_seconds": {
+        "description": "View refresh interval (seconds)"
+      },
+      "show_covers": {
+        "description": "Show cover images"
+      },
+      "show_timezone": {
+        "description": "Show the time zone after times (e.g. GMT+8)"
+      }
+    },
+    "advanced": {
+      "description": "Advanced settings",
+      "retention_days": {
+        "description": "Keep removed activities for (days)"
+      },
+      "allow_insecure_http": {
+        "description": "Allow HTTP sources (not recommended)"
+      },
+      "http_user_agent": {
+        "description": "Request User-Agent"
+      }
+    }
+  },
+  "views": {
+    "activity": {
+      "title": "Game Activity Sync",
+      "description": "Monitor activity sync status, activities, source health, and reminder jobs.",
+      "tabs": {
+        "overview": "Overview",
+        "activities": "Activities",
+        "sources": "Sources",
+        "reminders": "Reminders"
+      },
+      "common": {
+        "refresh": "Refresh",
+        "retry": "Retry",
+        "cancel": "Cancel",
+        "close": "Close",
+        "copy": "Copy",
+        "copied": "Copied",
+        "copyFailed": "Copy failed: text selected, press Ctrl+C",
+        "loading": "Loading",
+        "all": "All",
+        "clear": "Clear",
+        "na": "—",
+        "expand": "Show details",
+        "collapse": "Hide details",
+        "updatedAt": "Updated {time}"
+      },
+      "header": {
+        "refreshTitle": "Refresh current data (read-only)",
+        "syncNow": "Sync now",
+        "syncing": "Syncing…",
+        "lastSyncLabel": "Last sync",
+        "neverSynced": "Never synced",
+        "loadFailed": "Data unavailable",
+        "syncConfirmTitle": "Sync now?",
+        "syncConfirmBody": "Trigger one data sync for {game}; the activity list updates when it finishes.",
+        "syncConfirmBodyAll": "Trigger a full sync for all games; lists update when it finishes.",
+        "syncConfirmOk": "Start sync"
+      },
+      "sync": {
+        "chip": {
+          "idle": "Sync idle",
+          "running": "Sync running",
+          "error": "Sync failed"
+        },
+        "toast": {
+          "started": "Sync triggered",
+          "alreadyRunning": "Sync is already running; waiting for it to finish",
+          "rateLimited": "Already triggered recently; try again in 30 seconds",
+          "failed": "Sync request failed: {message}",
+          "finished": "Sync finished; data updated"
+        },
+        "fastPolling": "Sync running; refreshing quickly…",
+        "cooldown": "You can sync again in {seconds}s"
+      },
+      "status": {
+        "active": "Active",
+        "ending_soon": "Ending soon",
+        "upcoming": "Upcoming",
+        "ended": "Ended",
+        "removed": "Removed"
+      },
+      "sourceStatus": {
+        "ok": "OK",
+        "stale": "Stale",
+        "error": "Error",
+        "disabled": "Disabled"
+      },
+      "jobStatus": {
+        "pending": "Pending",
+        "sent": "Submitted",
+        "failed": "Failed",
+        "skipped": "Skipped",
+        "unknown": "Unknown"
+      },
+      "games": {
+        "genshin": "Genshin Impact",
+        "starrail": "Honkai: Star Rail",
+        "zenless": "Zenless Zone Zero",
+        "arknights": "Arknights",
+        "endfield": "Arknights: Endfield",
+        "wuthering_waves": "Wuthering Waves"
+      },
+      "overview": {
+        "unit": "items",
+        "kpi": {
+          "active": "Active",
+          "endingSoon": "Ending soon",
+          "upcoming": "Upcoming",
+          "removed24h": "Removed (24h)"
+        },
+        "kpiHint": {
+          "active": "Currently visible",
+          "endingSoon": "Nearing the end",
+          "upcoming": "Not started yet",
+          "removed24h": "Recently removed"
+        },
+        "syncPanel": {
+          "title": "Sync & sources",
+          "syncStatus": "Sync status",
+          "lastSync": "Last sync",
+          "sourceHealth": "Source health",
+          "healthSummary": "{ok} OK / {stale} stale / {error} error / {disabled} disabled",
+          "pollInterval": "Auto refresh: {seconds}s"
+        },
+        "nextReminder": {
+          "title": "Next reminder",
+          "empty": "No pending reminders",
+          "threshold": "{days} days before"
+        },
+        "updatedAt": "Stats updated {time}",
+        "viewAll": "View all activities"
+      },
+      "activities": {
+        "filters": {
+          "game": "Game",
+          "status": "Status",
+          "search": "Search",
+          "searchPlaceholder": "Activity name or description",
+          "limit": "Rows per load"
+        },
+        "resultCount": "{count} activities",
+        "table": {
+          "name": "Activity",
+          "game": "Game",
+          "status": "Status",
+          "start": "Start",
+          "end": "End",
+          "sources": "Sources",
+          "updated": "Synced at"
+        },
+        "row": {
+          "primary": "Primary",
+          "merged": "{count} sources",
+          "open": "Open details for {name}"
+        },
+        "empty": {
+          "title": "No activities to show",
+          "body": "Activities appear here after a source sync completes.",
+          "action": "Sync now"
+        },
+        "filteredEmpty": {
+          "title": "No matching activities",
+          "body": "Try another keyword or clear the filters.",
+          "action": "Clear filters"
+        },
+        "truncated": "Showing the first {count}; narrow the filters to see more"
+      },
+      "detail": {
+        "title": "Activity details",
+        "description": "Description",
+        "emptyDescription": "This activity has no description.",
+        "fields": {
+          "rawId": "Raw ID",
+          "sourceId": "Source",
+          "contentHash": "Content hash",
+          "kind": "Kind",
+          "mergedSources": "Merged sources",
+          "firstSeen": "First seen",
+          "lastSeen": "Synced at",
+          "removedAt": "Removed at",
+          "timeRange": "Time range",
+          "game": "Game",
+          "status": "Status"
+        }
+      },
+      "sources": {
+        "table": {
+          "source": "Source",
+          "status": "Status",
+          "adapter": "Adapter",
+          "url": "URL",
+          "lastSuccess": "Synced at",
+          "failures": "Failures",
+          "activityCount": "Activities",
+          "actions": "Actions"
+        },
+        "details": {
+          "title": "Details",
+          "priority": "Priority",
+          "enabled": "Enabled",
+          "lastChecked": "Last checked",
+          "httpStatus": "HTTP status",
+          "etag": "ETag",
+          "lastModified": "Last-Modified",
+          "nextRetryAt": "Next retry",
+          "lastError": "Last error",
+          "yes": "Yes",
+          "no": "No"
+        },
+        "retry": "Retry sync",
+        "retrying": "Retrying…",
+        "retryConfirmTitle": "Retry this source?",
+        "retryConfirmBody": "Trigger one sync for the game that {source} ({game}) belongs to.",
+        "disabledNote": "This source is disabled; enable it in the plugin config.",
+        "empty": {
+          "title": "No sources configured",
+          "body": "Source health appears here after you add sources in the plugin config."
+        }
+      },
+      "reminders": {
+        "summary": {
+          "jobs": "Reminder jobs",
+          "pending": "Pending",
+          "sent": "Submitted",
+          "skipped": "Skipped",
+          "failed": "Failed",
+          "subscriptions": "Subscription sessions"
+        },
+        "sentNote": "“Submitted” means the reminder was handed to the platform adapter, not that it was delivered. QQ official group sends may be skipped by the core when the group is cold.",
+        "catchUp": "Catch-up",
+        "catchUpHint": "This reminder was sent at least 1 minute after its scheduled time.",
+        "table": {
+          "activity": "Activity",
+          "game": "Game",
+          "threshold": "Lead time",
+          "fireAt": "Fires at",
+          "status": "Status",
+          "sentAt": "Sent at",
+          "lastError": "Last error"
+        },
+        "details": {
+          "title": "Details",
+          "source": "Source",
+          "rawId": "Raw ID",
+          "attempts": "Attempts"
+        },
+        "thresholdDays": "{days} days",
+        "empty": {
+          "title": "No reminder jobs",
+          "body": "Jobs appear here after reminders are configured for activities."
+        }
+      },
+      "errors": {
+        "bridgeTitle": "AstrBot view bridge not detected",
+        "bridgeBody": "Open this view from the AstrBot WebUI plugin page; if it persists, reload the plugin and refresh.",
+        "authTitle": "Session expired",
+        "authBody": "Sign in to AstrBot WebUI again, then refresh this page.",
+        "timeoutTitle": "Request timed out",
+        "timeoutBody": "The server did not respond within {seconds}s; retrying.",
+        "serverTitle": "Service unavailable",
+        "serverBody": "Request failed: {message}",
+        "schemaMismatchTitle": "View and backend versions differ",
+        "schemaMismatchBody": "The response schema_version is not 1; some information may not display.",
+        "bannerRetry": "Retry",
+        "bannerNextRetry": "Retrying in {seconds}s",
+        "reload": "Reload page",
+        "staleData": "Showing cached data from {time}"
+      },
+      "toast": {
+        "dismiss": "Dismiss notification"
+      },
+      "confirm": {
+        "cancel": "Cancel",
+        "ok": "Confirm"
+      },
+      "aria": {
+        "tabs": "View sections",
+        "syncStatus": "Sync status: {status}",
+        "filterResults": "Filtered results: {count}",
+        "activityTable": "Activities table",
+        "sourcesTable": "Sources table",
+        "remindersTable": "Reminder jobs table",
+        "loading": "Loading data",
+        "detailDialog": "Activity details dialog"
+      },
+      "time": {
+        "rangeSeparator": "to",
+        "timezoneNote": "Local time ({zone})"
+      }
+    }
+  }
+}

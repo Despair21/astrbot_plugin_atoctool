@@ -1,0 +1,168 @@
+{
+  "general": {
+    "type": "object",
+    "description": "常规设置",
+    "items": {
+      "enabled": {
+        "type": "bool",
+        "description": "启用插件",
+        "default": true
+      },
+      "sync_interval_minutes": {
+        "type": "int",
+        "description": "自动同步间隔（分钟）",
+        "default": 30,
+        "slider": { "min": 5, "max": 1440, "step": 1 }
+      },
+      "request_timeout_seconds": {
+        "type": "int",
+        "description": "单请求超时（秒）",
+        "default": 20,
+        "slider": { "min": 5, "max": 60, "step": 1 }
+      },
+      "max_response_kb": {
+        "type": "int",
+        "description": "响应体上限（KB）",
+        "default": 4096,
+        "slider": { "min": 256, "max": 16384, "step": 256 }
+      },
+      "use_t2i": {
+        "type": "bool",
+        "description": "尝试将长结果渲染为图片",
+        "default": false
+      }
+    }
+  },
+  "sources": {
+    "type": "template_list",
+    "description": "活动源列表",
+    "hint": "留空表示启用 6 个内置源；条目按 priority 升序决定主源",
+    "default": [],
+    "templates": {
+      "preset": {
+        "name": "内置源",
+        "hint": "选择游戏并可覆盖内置 URL",
+        "display_item": "game",
+        "hide_hint_in_list": true,
+        "items": {
+          "game": {
+            "type": "string",
+            "description": "游戏",
+            "default": "genshin",
+            "options": ["genshin", "starrail", "zenless", "arknights", "endfield", "wuthering_waves"],
+            "labels": ["原神", "崩坏：星穹铁道", "绝区零", "明日方舟", "明日方舟：终末地", "鸣潮"]
+          },
+          "enabled": { "type": "bool", "description": "启用该源", "default": true },
+          "priority": {
+            "type": "int",
+            "description": "主源优先级（越小越优先）",
+            "default": 100,
+            "slider": { "min": 0, "max": 999, "step": 1 }
+          },
+          "url": { "type": "string", "description": "覆盖 URL（空则用内置）", "default": "" },
+          "adapter": { "type": "string", "description": "适配器", "default": "starrail_assistant_v1" },
+          "timezone": { "type": "string", "description": "源时区", "default": "Asia/Shanghai" }
+        }
+      },
+      "generic": {
+        "name": "自定义 JSON 源",
+        "hint": "用点号路径映射字段；不支持数组下标",
+        "display_item": "source_id",
+        "hide_hint_in_list": true,
+        "items": {
+          "source_id": { "type": "string", "description": "源标识（唯一，小写）", "default": "" },
+          "game_name": { "type": "string", "description": "游戏名（用于生成 game_id）", "default": "" },
+          "url": { "type": "string", "description": "JSON URL", "default": "" },
+          "adapter": { "type": "string", "description": "适配器", "default": "generic_json" },
+          "priority": {
+            "type": "int",
+            "description": "主源优先级",
+            "default": 100,
+            "slider": { "min": 0, "max": 999, "step": 1 }
+          },
+          "timezone": { "type": "string", "description": "源时区", "default": "Asia/Shanghai" },
+          "map_activities": { "type": "string", "description": "活动数组路径", "default": "activities" },
+          "map_name": { "type": "string", "description": "名称路径", "default": "name" },
+          "map_description": { "type": "string", "description": "描述路径", "default": "description" },
+          "map_start": { "type": "string", "description": "开始时间路径", "default": "startTime" },
+          "map_end": { "type": "string", "description": "结束时间路径", "default": "endTime" },
+          "map_cover": { "type": "string", "description": "封面路径", "default": "cover" },
+          "map_kind": { "type": "string", "description": "类别路径（可空）", "default": "kind" },
+          "map_version": { "type": "string", "description": "版本号路径（可空）", "default": "version" },
+          "map_version_name": { "type": "string", "description": "版本名路径（可空）", "default": "versionName" }
+        }
+      }
+    }
+  },
+  "reminder": {
+    "type": "object",
+    "description": "提醒设置",
+    "items": {
+      "enabled": { "type": "bool", "description": "启用结束前提醒", "default": true },
+      "remind_days_before": {
+        "type": "string",
+        "description": "提前天数（逗号分隔）",
+        "hint": "如 3,1 表示结束前 3 天与 1 天各提醒一次",
+        "default": "3,1"
+      },
+      "remind_time": { "type": "string", "description": "提醒时刻（HH:MM，源时区）", "default": "10:00" },
+      "max_grace_hours": {
+        "type": "int",
+        "description": "补发窗口（小时，0=不补发）",
+        "default": 48,
+        "slider": { "min": 0, "max": 168, "step": 1 }
+      },
+      "target_umos": {
+        "type": "list",
+        "description": "固定提醒会话",
+        "hint": "留空则使用 /活动订阅 记录的会话；群会话格式为 <平台ID>:GroupMessage:<群ID>。QQ 官方机器人群主动消息依赖 AstrBot 进程内群场景缓存，冷群可能被核心静默跳过：请先在群内发一条消息（或让群成员 /活动订阅）预热，且 sent 状态不代表平台回执。",
+        "default": [],
+        "_special": "umo"
+      },
+      "max_sends_per_tick": {
+        "type": "int",
+        "description": "每轮最多发送会话数",
+        "default": 5,
+        "slider": { "min": 1, "max": 20, "step": 1 }
+      }
+    }
+  },
+  "view": {
+    "type": "object",
+    "description": "视图设置",
+    "items": {
+      "default_game": { "type": "string", "description": "默认游戏 game_id", "default": "" },
+      "poll_seconds": {
+        "type": "int",
+        "description": "视图刷新间隔（秒）",
+        "default": 30,
+        "slider": { "min": 10, "max": 120, "step": 5 }
+      },
+      "show_covers": { "type": "bool", "description": "展示封面图", "default": true },
+      "show_timezone": {
+        "type": "bool",
+        "description": "在时间后显示时区（如 GMT+8）",
+        "default": false
+      }
+    }
+  },
+  "advanced": {
+    "type": "object",
+    "description": "高级设置",
+    "collapsed": true,
+    "items": {
+      "retention_days": {
+        "type": "int",
+        "description": "下架活动保留天数",
+        "default": 7,
+        "slider": { "min": 1, "max": 90, "step": 1 }
+      },
+      "allow_insecure_http": { "type": "bool", "description": "允许 HTTP 源（不推荐）", "default": false },
+      "http_user_agent": {
+        "type": "string",
+        "description": "请求 User-Agent",
+        "default": "Mozilla/5.0 (compatible; astrbot-plugin-game-activity/0.1.0)"
+      }
+    }
+  }
+}
