@@ -42,11 +42,12 @@
 | `general` | `enabled`、`sync_interval_minutes`、`request_timeout_seconds`、`max_response_kb`、`use_t2i` | 启用、30 分钟、20 秒、4096 KB、关闭 |
 | `sources` | `template_list`：内置源预设或自定义 JSON 源 | 留空 = 启用 6 个内置源 |
 | `reminder` | `enabled`、`remind_days_before`、`remind_time`、`max_grace_hours`、`target_umos`、`max_sends_per_tick` | 启用、`3,1`、`10:00`、48 小时、空、5 |
-| `view` | `default_game`、`poll_seconds`、`show_covers` | 空、30 秒、开启 |
+| `view` | `default_game`、`poll_seconds`、`show_covers`、`show_timezone` | 空、30 秒、开启、关闭 |
 | `advanced` | `retention_days`、`allow_insecure_http`、`http_user_agent` | 7 天、关闭、插件 UA |
 
 - 自定义 JSON 源使用点号路径映射（`map_activities` / `map_name` / `map_start` / `map_end` 必填），不支持数组下标。
 - 非法配置只会禁用对应源并记录原因，不会导致插件崩溃。
+- 视图时间默认只显示本地时间、不附带时区（如 `GMT+8`）；`view.show_timezone=true` 后，最后同步、统计更新时间、活动起止、数据源同步时间、提醒触发/发送时间与缓存时间文案会统一附带时区。
 - 配置更新后需重载插件生效（含 `reminder.target_umos`；重载后新增目标会在下一轮自动追加到已有作业，已发送的目标不会重发）。`general.enabled=false` 可关闭自动同步，仅用手动同步。
 
 ## 数据目录
@@ -64,7 +65,7 @@ state/subscriptions.json    # 会话订阅
 
 ## Dashboard 视图
 
-插件详情页 →「游戏活动同步」：总览（同步状态、源健康、活动计数、下一提醒）、活动列表与筛选、数据源诊断与重试、提醒任务。视图运行在受限 iframe 中，仅通过 `window.AstrBotPluginView` bridge 访问上述 7 条 API。
+插件详情页 →「游戏活动同步」：总览（同步状态、源健康、活动计数、下一提醒）、活动列表与筛选、数据源诊断与重试、提醒任务。视图运行在受限 iframe 中，仅通过 `window.AstrBotPluginView` bridge 访问上述 7 条 API。时间默认不显示时区，在插件配置 `view.show_timezone`（默认关闭）打开后统一显示。提醒状态 `sent` 展示为「已提交」，表示已交给平台适配器而非送达；晚于计划时间 1 分钟以上的发送会标「补发」，任务详情需点击活动名旁的「详情」展开。
 
 ## 开发与验证
 

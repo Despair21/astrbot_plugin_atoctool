@@ -134,6 +134,9 @@
       },
       "show_covers": {
         "description": "展示封面图"
+      },
+      "show_timezone": {
+        "description": "在时间后显示时区（如 GMT+8）"
       }
     },
     "advanced": {
@@ -218,7 +221,7 @@
       },
       "jobStatus": {
         "pending": "待发送",
-        "sent": "已发送",
+        "sent": "已提交",
         "failed": "失败",
         "skipped": "已跳过",
         "unknown": "未知状态"
@@ -277,7 +280,7 @@
           "start": "开始",
           "end": "结束",
           "sources": "来源",
-          "updated": "最近发现"
+          "updated": "同步时间"
         },
         "row": {
           "primary": "主记录",
@@ -307,7 +310,7 @@
           "kind": "类型",
           "mergedSources": "合并来源",
           "firstSeen": "首次发现",
-          "lastSeen": "最近发现",
+          "lastSeen": "同步时间",
           "removedAt": "下架时间",
           "timeRange": "活动时间",
           "game": "游戏",
@@ -320,13 +323,13 @@
           "status": "状态",
           "adapter": "适配器",
           "url": "地址",
-          "lastSuccess": "最近成功",
+          "lastSuccess": "同步时间",
           "failures": "连续失败",
           "activityCount": "活动数",
           "actions": "操作"
         },
         "details": {
-          "title": "诊断详情",
+          "title": "详情",
           "priority": "优先级",
           "enabled": "启用",
           "lastChecked": "最近检查",
@@ -352,11 +355,14 @@
         "summary": {
           "jobs": "提醒任务",
           "pending": "待发送",
-          "sent": "已发送",
+          "sent": "已提交",
           "skipped": "已跳过",
           "failed": "失败",
           "subscriptions": "订阅会话数"
         },
+        "sentNote": "“已提交”表示已交给平台适配器，不代表已送达；QQ 官方群聊冷群时可能被核心跳过。",
+        "catchUp": "补发",
+        "catchUpHint": "该提醒晚于预定时间补发（超过 1 分钟）",
         "table": {
           "activity": "活动",
           "game": "游戏",
@@ -367,7 +373,7 @@
           "lastError": "最后错误"
         },
         "details": {
-          "title": "任务详情",
+          "title": "详情",
           "source": "数据源",
           "rawId": "原始 ID",
           "attempts": "尝试次数"

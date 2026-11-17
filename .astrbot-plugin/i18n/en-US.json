@@ -134,6 +134,9 @@
       },
       "show_covers": {
         "description": "Show cover images"
+      },
+      "show_timezone": {
+        "description": "Show the time zone after times (e.g. GMT+8)"
       }
     },
     "advanced": {
@@ -218,7 +221,7 @@
       },
       "jobStatus": {
         "pending": "Pending",
-        "sent": "Sent",
+        "sent": "Submitted",
         "failed": "Failed",
         "skipped": "Skipped",
         "unknown": "Unknown"
@@ -277,7 +280,7 @@
           "start": "Start",
           "end": "End",
           "sources": "Sources",
-          "updated": "Last seen"
+          "updated": "Synced at"
         },
         "row": {
           "primary": "Primary",
@@ -307,7 +310,7 @@
           "kind": "Kind",
           "mergedSources": "Merged sources",
           "firstSeen": "First seen",
-          "lastSeen": "Last seen",
+          "lastSeen": "Synced at",
           "removedAt": "Removed at",
           "timeRange": "Time range",
           "game": "Game",
@@ -320,13 +323,13 @@
           "status": "Status",
           "adapter": "Adapter",
           "url": "URL",
-          "lastSuccess": "Last success",
+          "lastSuccess": "Synced at",
           "failures": "Failures",
           "activityCount": "Activities",
           "actions": "Actions"
         },
         "details": {
-          "title": "Diagnostics",
+          "title": "Details",
           "priority": "Priority",
           "enabled": "Enabled",
           "lastChecked": "Last checked",
@@ -352,11 +355,14 @@
         "summary": {
           "jobs": "Reminder jobs",
           "pending": "Pending",
-          "sent": "Sent",
+          "sent": "Submitted",
           "skipped": "Skipped",
           "failed": "Failed",
           "subscriptions": "Subscription sessions"
         },
+        "sentNote": "“Submitted” means the reminder was handed to the platform adapter, not that it was delivered. QQ official group sends may be skipped by the core when the group is cold.",
+        "catchUp": "Catch-up",
+        "catchUpHint": "This reminder was sent at least 1 minute after its scheduled time.",
         "table": {
           "activity": "Activity",
           "game": "Game",
@@ -367,7 +373,7 @@
           "lastError": "Last error"
         },
         "details": {
-          "title": "Job details",
+          "title": "Details",
           "source": "Source",
           "rawId": "Raw ID",
           "attempts": "Attempts"

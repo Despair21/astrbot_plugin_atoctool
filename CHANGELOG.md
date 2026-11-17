@@ -42,9 +42,23 @@ All notable changes to this plugin are documented here. The format follows
   help. English aliases are now `activity_*`.
 - Replaced the bundled `helloworld` template with the game activity plugin
   (`version: 0.1.0`, verified against AstrBot 4.29.4 stable).
+- Dashboard times now omit the time zone by default; the new `view.show_timezone`
+  option (default off) appends it to every formatted time.
+- Reminder status `sent` is labeled 已提交 / Submitted with a muted note that it
+  means "handed to the platform adapter", not delivered; sends at least 1 minute
+  after the scheduled time carry a 补发 / Catch-up badge. Reminder job facts are
+  expanded on demand from a 详情 / Details toggle in the activity cell instead of a
+  nested `<details>` or an always-visible row; mobile cards use the same toggle.
+- Renamed ambiguous dashboard labels: activities/sources 最近发现/最近成功 →
+  同步时间, sources 诊断详情 → 详情 (en-US: Last seen/Last success → Synced at,
+  Diagnostics → Details).
 
 ### Fixed
 
+- Reminder detail rows are collapsed by default, so each job no longer renders an
+  always-visible extra table row. Details DOM ids are index-based
+  (`reminder-details-<n>`) and the job key stays in `data-reminder-key`, so keys
+  containing `#` or `:` never become CSS selectors.
 - New targets added to a fixed reminder session (`target_umos`) or to a game
   subscription are now appended to existing jobs even when the job is already
   `sent`; the job is reopened as `pending` and only the new target is attempted.

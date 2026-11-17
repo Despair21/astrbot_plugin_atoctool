@@ -138,7 +138,12 @@
         "default": 30,
         "slider": { "min": 10, "max": 120, "step": 5 }
       },
-      "show_covers": { "type": "bool", "description": "展示封面图", "default": true }
+      "show_covers": { "type": "bool", "description": "展示封面图", "default": true },
+      "show_timezone": {
+        "type": "bool",
+        "description": "在时间后显示时区（如 GMT+8）",
+        "default": false
+      }
     }
   },
   "advanced": {

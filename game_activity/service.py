@@ -90,6 +90,7 @@ def normalize_config(raw: Any) -> dict[str, Any]:
         "default_game": _as_text(view.get("default_game"), ""),
         "poll_seconds": _as_int(view.get("poll_seconds"), 30, 10, 120),
         "show_covers": _as_bool(view.get("show_covers"), True),
+        "show_timezone": _as_bool(view.get("show_timezone"), False),
         "retention_days": _as_int(advanced.get("retention_days"), 7, 1, 90),
         "allow_insecure_http": _as_bool(advanced.get("allow_insecure_http"), False),
         "http_user_agent": _as_text(
@@ -753,6 +754,7 @@ class GameActivityService:
             "removed_24h": removed_24h,
             "next_reminder": self._next_reminder(),
             "poll_seconds": self.config["poll_seconds"],
+            "show_timezone": self.config["show_timezone"],
         }
 
     def _pending_reminders(self) -> int:

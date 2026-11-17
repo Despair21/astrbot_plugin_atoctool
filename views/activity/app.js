@@ -24,7 +24,7 @@ const LIMITS = [50, 100, 200];
 const COLOR_PATTERN = /^(#[0-9a-f]{3}|#[0-9a-f]{6}|#[0-9a-f]{8}|rgba?\([^()]*\)|hsla?\([^()]*\))$/i;
 
 const state = {
-  boot: "loading", locale: "zh-CN", pageTitle: "", isDark: false, tab: "overview",
+  boot: "loading", locale: "zh-CN", showTimezone: false, pageTitle: "", isDark: false, tab: "overview",
   paused: false, polling: false, failures: 0, lastError: null, games: null,
   overview: null, overviewAt: 0, lastGoodAt: 0, staleAt: 0,
   activities: { mounted: false, data: null, loading: false, generation: 0, limit: 50,
@@ -117,15 +117,17 @@ function fmt(key, vars, fallback) {
   });
 }
 
-let formatterCache = { locale: "", formatter: null };
+let formatterCache = { key: "", formatter: null };
 
 function dateFormatter() {
-  if (formatterCache.locale === state.locale && formatterCache.formatter) return formatterCache.formatter;
-  const options = { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", timeZoneName: "short", hour12: false };
+  const key = state.locale + "|" + state.showTimezone;
+  if (formatterCache.key === key && formatterCache.formatter) return formatterCache.formatter;
+  const options = { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false };
+  if (state.showTimezone) options.timeZoneName = "short";
   let formatter;
   try { formatter = new Intl.DateTimeFormat(state.locale, options); }
   catch (error) { formatter = new Intl.DateTimeFormat("zh-CN", options); }
-  formatterCache = { locale: state.locale, formatter };
+  formatterCache = { key, formatter };
   return formatter;
 }
 
@@ -285,6 +287,7 @@ function normalizeOverview(raw) {
       fireAtIso: str(next.fire_at_iso), thresholdDays: numOrNull(next.threshold_days),
     } : null,
     pollSeconds: Math.min(300, Math.max(10, num(payload.poll_seconds, DEFAULT_POLL_SECONDS))),
+    showTimezone: payload.show_timezone === true,
   };
 }
 
@@ -980,7 +983,7 @@ function activitiesTable(items) {
   const table = el("table", { className: "c-table c-table--activities" });
   table.append(el("caption", { className: "sr-only", text: t("aria.activityTable", "活动列表") }));
   const headRow = el("tr");
-  const columns = [["name", "活动"], ["game", "游戏"], ["status", "状态"], ["start", "开始"], ["end", "结束"], ["sources", "来源"], ["updated", "最近发现"]];
+  const columns = [["name", "活动"], ["game", "游戏"], ["status", "状态"], ["start", "开始"], ["end", "结束"], ["sources", "来源"], ["updated", "同步时间"]];
   for (const [key, fallback] of columns) headRow.append(el("th", { scope: "col", text: t("activities.table." + key, fallback) }));
   const body = el("tbody");
   for (const item of items) body.append(activityRow(item));
@@ -1121,7 +1124,7 @@ function sourceDiagToggle(item) {
   });
   button.append(
     el("span", { className: "c-diag__chev", "aria-hidden": "true" }),
-    el("span", { text: t("sources.details.title", "诊断详情") }),
+    el("span", { text: t("sources.details.title", "详情") }),
   );
   return button;
 }
@@ -1130,7 +1133,7 @@ function sourceDiagPanel(item, domId) {
   const attrs = { className: "c-diag__panel" };
   if (domId) attrs.id = domId;
   return el("div", attrs,
-    el("p", { className: "c-diag__title", text: t("sources.details.title", "诊断详情") + " · " + item.sourceId }),
+    el("p", { className: "c-diag__title", text: t("sources.details.title", "详情") + " · " + item.sourceId }),
     sourceDiagnostics(item));
 }
 
@@ -1151,7 +1154,7 @@ function sourcesTable(items) {
   const headRow = el("tr");
   const columns = [
     ["source", "数据源"], ["game", "游戏", "detail.fields.game"], ["status", "状态"],
-    ["lastSuccess", "最近成功"], ["failures", "连续失败"], ["activityCount", "活动数"], ["actions", "操作"],
+    ["lastSuccess", "同步时间"], ["failures", "连续失败"], ["activityCount", "活动数"], ["actions", "操作"],
   ];
   for (const [key, fallback, keyPath] of columns) headRow.append(el("th", { scope: "col", text: t(keyPath || "sources.table." + key, fallback) }));
   table.append(el("thead", {}, headRow));
@@ -1182,7 +1185,7 @@ function sourcesTable(items) {
 function sourceCard(item) {
   const dl = el("dl", { className: "c-facts" });
   appendFact(dl, t("detail.fields.game", "游戏"), gameLabel(item.gameId));
-  appendFact(dl, t("sources.table.lastSuccess", "最近成功"), timeNode(item.lastSuccess));
+  appendFact(dl, t("sources.table.lastSuccess", "同步时间"), timeNode(item.lastSuccess));
   appendFact(dl, t("sources.table.failures", "连续失败"), String(item.consecutiveFailures));
   appendFact(dl, t("sources.table.activityCount", "活动数"), String(item.activityCount));
   const panel = sourceDiagPanel(item, "diag-" + item.sourceId);
@@ -1263,32 +1266,71 @@ function summaryItem(label, value) {
     el("span", { text: label }), el("strong", { className: "c-summary__value", text: String(value) }));
 }
 
-function reminderDetails(job) {
-  const details = el("details", { className: "c-details", dataset: { jobDetails: job.key } });
-  if (state.reminders.expanded.has(job.key)) details.open = true;
+function isCatchUp(job) {
+  if (!job || job.status !== "sent") return false;
+  if (typeof job.sentAt !== "number" || !Number.isFinite(job.sentAt)) return false;
+  const fireAt = fromIso(job.fireAtIso);
+  if (!fireAt) return false;
+  return job.sentAt * 1000 - fireAt.getTime() >= 60000;
+}
+
+function reminderStatus(job) {
+  const group = el("span", { className: "c-statusgroup" },
+    statusChip(JOB_TONE[job.status] || "neutral", jobStatusLabel(job.status)));
+  if (!isCatchUp(job)) return group;
+  const hint = t("reminders.catchUpHint", "该提醒晚于预定时间补发（超过 1 分钟）");
+  group.append(el("span", {
+    className: "c-badge c-badge--catchup", text: t("reminders.catchUp", "补发"),
+    title: hint, "aria-label": t("reminders.catchUp", "补发") + ": " + hint,
+  }));
+  return group;
+}
+
+function reminderToggle(job, index) {
+  const button = el("button", {
+    className: "c-reminder__toggle", type: "button",
+    dataset: { reminderToggle: String(index), focusKey: "reminder-toggle:" + job.key },
+    "data-reminder-key": job.key,
+    "aria-expanded": state.reminders.expanded.has(job.key) ? "true" : "false",
+    "aria-controls": "reminder-details-" + index,
+  });
+  button.append(
+    el("span", { className: "c-diag__chev", "aria-hidden": "true" }),
+    el("span", { text: t("reminders.details.title", "详情") }),
+  );
+  return button;
+}
+
+function reminderDetails(job, domId) {
+  const attrs = { className: "c-reminder__details" };
+  if (domId) attrs.id = domId;
   const dl = el("dl", { className: "c-facts" });
   appendFact(dl, t("reminders.details.source", "数据源"), job.sourceId, { mono: true });
   appendFact(dl, t("reminders.details.rawId", "原始 ID"), job.rawId, { mono: true });
   appendFact(dl, t("reminders.details.attempts", "尝试次数"), String(job.attempts));
   if (job.lastError) appendFact(dl, t("sources.details.lastError", "最后错误"), job.lastError, { pre: true });
-  details.append(
-    el("summary", { className: "c-details__summary", text: t("reminders.details.title", "任务详情"), dataset: { focusKey: "reminder-details:" + job.key } }),
-    dl,
-  );
-  return details;
+  return el("div", attrs, dl);
 }
 
-function reminderRow(job) {
+function reminderRow(job, index) {
+  const name = el("span", { className: "c-reminder__name", text: job.activityName || t("common.na", "—") });
   const row = el("tr", { className: "c-row" });
   row.append(
-    el("td", { text: job.activityName || t("common.na", "—") }),
+    el("td", {}, el("span", { className: "c-reminder__activity" }, name, reminderToggle(job, index))),
     el("td", { text: gameLabel(job.gameId) }),
     el("td", { text: job.thresholdDays === null ? t("common.na", "—") : fmt("reminders.thresholdDays", { days: job.thresholdDays }, "{days} 天") }),
     el("td", {}, isoNode(job.fireAtIso)),
-    el("td", {}, statusChip(JOB_TONE[job.status] || "neutral", jobStatusLabel(job.status))),
+    el("td", {}, reminderStatus(job)),
     el("td", {}, timeNode(job.sentAt)),
     el("td", { className: job.lastError ? "c-cell--error" : "", text: job.lastError || t("common.na", "—") }),
   );
+  return row;
+}
+
+function reminderDetailsRow(job, index) {
+  const row = el("tr", { className: "c-row c-row--details", id: "reminder-details-" + index });
+  if (!state.reminders.expanded.has(job.key)) row.hidden = true;
+  row.append(el("td", { colspan: "7" }, reminderDetails(job, "")));
   return row;
 }
 
@@ -1302,25 +1344,29 @@ function remindersTable(data) {
   ];
   for (const [key, fallback] of columns) headRow.append(el("th", { scope: "col", text: t("reminders.table." + key, fallback) }));
   table.append(el("thead", {}, headRow));
-  for (const job of data.jobs) {
+  data.jobs.forEach((job, index) => {
     const body = el("tbody", { dataset: { jobKey: job.key } });
-    body.append(reminderRow(job), el("tr", { className: "c-row c-row--diag" }, el("td", { colspan: "7" }, reminderDetails(job))));
+    body.append(reminderRow(job, index), reminderDetailsRow(job, index));
     table.append(body);
-  }
+  });
   return el("div", { className: "c-tablewrap" }, table);
 }
 
-function reminderCard(job) {
+function reminderCard(job, index) {
   const dl = el("dl", { className: "c-facts" });
   appendFact(dl, t("reminders.table.game", "游戏"), gameLabel(job.gameId));
   appendFact(dl, t("reminders.table.threshold", "提前"), job.thresholdDays === null ? null : fmt("reminders.thresholdDays", { days: job.thresholdDays }, "{days} 天"));
   appendFact(dl, t("reminders.table.fireAt", "触发时间"), isoNode(job.fireAtIso));
   appendFact(dl, t("reminders.table.sentAt", "发送时间"), timeNode(job.sentAt));
+  const panel = reminderDetails(job, "reminder-details-" + index);
+  if (!state.reminders.expanded.has(job.key)) panel.hidden = true;
   const block = el("div", { className: "c-card__body" },
     el("div", { className: "c-card__head" },
       el("span", { className: "c-card__headtitle", text: job.activityName || t("common.na", "—") }),
-      statusChip(JOB_TONE[job.status] || "neutral", jobStatusLabel(job.status))),
-    dl, reminderDetails(job));
+      reminderStatus(job)),
+    dl,
+    el("div", { className: "c-reminder__togglebar" }, reminderToggle(job, index)),
+    panel);
   if (job.lastError) block.append(el("p", { className: "c-cell--error c-small", text: job.lastError }));
   return el("li", { className: "c-card" }, block);
 }
@@ -1337,10 +1383,13 @@ function renderReminders() {
   panel.append(el("ul", { className: "c-summary" },
     summaryItem(t("reminders.summary.jobs", "提醒任务"), data.jobs.length),
     summaryItem(t("reminders.summary.pending", "待发送"), counts.pending),
-    summaryItem(t("reminders.summary.sent", "已发送"), counts.sent),
+    summaryItem(t("reminders.summary.sent", "已提交"), counts.sent),
     summaryItem(t("reminders.summary.skipped", "已跳过"), counts.skipped),
     summaryItem(t("reminders.summary.failed", "失败"), counts.failed),
     summaryItem(t("reminders.summary.subscriptions", "订阅会话数"), data.subscriptionsCount)));
+  if (data.jobs.length) {
+    panel.append(el("p", { className: "c-small c-reminder__note", text: t("reminders.sentNote", "“已提交”表示已交给平台适配器，不代表已送达；QQ 官方群聊冷群时可能被核心跳过。") }));
+  }
   if (!data.jobs.length) {
     panel.append(emptyState({
       titleKey: "reminders.empty.title", titleFallback: "暂无提醒任务",
@@ -1350,7 +1399,7 @@ function renderReminders() {
     panel.append(remindersTable(data));
   } else {
     const list = el("ul", { className: "c-cards c-cards--single" });
-    for (const job of data.jobs) list.append(reminderCard(job));
+    data.jobs.forEach((job, index) => list.append(reminderCard(job, index)));
     panel.append(list);
   }
   setPanelBusy("reminders", false);
@@ -1413,7 +1462,7 @@ function renderDetailBody(item) {
   appendFact(dl, t("detail.fields.contentHash", "内容哈希"), item.contentHash, { mono: true, copyText: item.contentHash });
   appendFact(dl, t("detail.fields.mergedSources", "合并来源"), item.mergedSources.length ? item.mergedSources.join(", ") : null, { mono: true, pre: true });
   appendFact(dl, t("detail.fields.firstSeen", "首次发现"), timeNode(item.firstSeenAt));
-  appendFact(dl, t("detail.fields.lastSeen", "最近发现"), timeNode(item.lastSeenAt));
+  appendFact(dl, t("detail.fields.lastSeen", "同步时间"), timeNode(item.lastSeenAt));
   appendFact(dl, t("detail.fields.removedAt", "下架时间"), timeNode(item.removedAt));
   body.append(el("section", { className: "c-detail__section" }, dl));
 }
@@ -1681,13 +1730,18 @@ function onPollSuccess() {
 async function loadOverview() {
   try {
     const data = normalizeOverview(await apiGet("overview"));
+    const timezoneChanged = data.showTimezone !== state.showTimezone;
+    state.showTimezone = data.showTimezone;
     state.overview = data;
     state.overviewAt = Date.now();
     state.lastGoodAt = Date.now();
     state.staleAt = 0;
     renderStaleNotice();
-    renderHeader();
-    renderOverview();
+    if (timezoneChanged) renderAll();
+    else {
+      renderHeader();
+      renderOverview();
+    }
     maybeSchemaWarning(data.schema);
     if (state.banner && state.banner.kind === "error") clearBanner();
     return true;
@@ -1949,13 +2003,20 @@ function onSourcesPanelClick(event) {
   }
 }
 
-function onDetailsToggle(event) {
-  const target = event.target;
-  if (!target || target.tagName !== "DETAILS") return;
-  const jobKey = target.dataset.jobDetails;
-  if (jobKey) {
-    if (target.open) state.reminders.expanded.add(jobKey);
-    else state.reminders.expanded.delete(jobKey);
+function onRemindersPanelClick(event) {
+  const toggle = event.target.closest("[data-reminder-toggle]");
+  if (!toggle) return;
+  const key = toggle.dataset.reminderKey || "";
+  if (!key) return;
+  const open = !state.reminders.expanded.has(key);
+  if (open) state.reminders.expanded.add(key);
+  else state.reminders.expanded.delete(key);
+  const panel = document.getElementById("reminder-details-" + (toggle.dataset.reminderToggle || ""));
+  if (panel) panel.hidden = !open;
+  const scope = panelEl("reminders");
+  if (!scope) return;
+  for (const node of scope.querySelectorAll("[data-reminder-toggle]")) {
+    if ((node.dataset.reminderKey || "") === key) node.setAttribute("aria-expanded", open ? "true" : "false");
   }
 }
 
@@ -1998,7 +2059,7 @@ function bindStaticEvents() {
   const sourcesPanel = panelEl("sources");
   if (sourcesPanel) sourcesPanel.addEventListener("click", onSourcesPanelClick);
   const remindersPanel = panelEl("reminders");
-  if (remindersPanel) remindersPanel.addEventListener("toggle", onDetailsToggle, true);
+  if (remindersPanel) remindersPanel.addEventListener("click", onRemindersPanelClick);
 
   window.addEventListener("hashchange", () => applyHash(false));
   document.addEventListener("visibilitychange", onVisibilityChange);

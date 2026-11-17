@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import sys
 import types
@@ -16,6 +17,15 @@ from game_activity.service import GameActivityService, normalize_config
 LOGGER = logging.getLogger("test_config")
 TZ = timezone(timedelta(hours=8))
 NOW = int(datetime(2026, 11, 19, 12, 0, tzinfo=TZ).timestamp())
+I18N_DIR = Path(__file__).resolve().parent.parent / ".astrbot-plugin" / "i18n"
+REQUIRED_I18N_PATHS = (
+    ("config", "view", "show_timezone", "description"),
+    ("views", "activity", "jobStatus", "sent"),
+    ("views", "activity", "reminders", "summary", "sent"),
+    ("views", "activity", "reminders", "sentNote"),
+    ("views", "activity", "reminders", "catchUp"),
+    ("views", "activity", "reminders", "catchUpHint"),
+)
 
 
 def make_service(data_root, config=None, **kwargs) -> GameActivityService:
@@ -115,6 +125,50 @@ def test_normalize_config_clamps_invalid_values() -> None:
     assert config["show_covers"] is False
     assert config["retention_days"] == 90
     assert config["allow_insecure_http"] is True
+
+
+def test_show_timezone_defaults_off_and_is_exposed_in_overview(data_root) -> None:
+    assert normalize_config({})["show_timezone"] is False
+    enabled = normalize_config({"view": {"show_timezone": True}})
+    assert enabled["show_timezone"] is True
+    service = make_service(data_root, config={"view": {"show_timezone": True}})
+    assert service.overview_dto()["show_timezone"] is True
+    default_service = make_service(data_root / "default")
+    assert default_service.overview_dto()["show_timezone"] is False
+
+
+def _load_i18n(locale: str) -> dict:
+    return json.loads((I18N_DIR / f"{locale}.json").read_text(encoding="utf-8"))
+
+
+def _nested(payload: dict, path: tuple[str, ...]):
+    node = payload
+    for key in path:
+        assert isinstance(node, dict), f"i18n path is not an object: {path}"
+        assert key in node, f"missing i18n key: {path}"
+        node = node[key]
+    return node
+
+
+def test_i18n_declares_view_timezone_and_reminder_keys() -> None:
+    for locale in ("zh-CN", "en-US"):
+        payload = _load_i18n(locale)
+        for path in REQUIRED_I18N_PATHS:
+            assert _nested(payload, path)
+        view = _nested(payload, ("views", "activity"))
+        zh = locale == "zh-CN"
+        assert view["jobStatus"]["sent"] == ("已提交" if zh else "Submitted")
+        assert view["reminders"]["summary"]["sent"] == ("已提交" if zh else "Submitted")
+        assert view["activities"]["table"]["updated"] == ("同步时间" if zh else "Synced at")
+        assert view["detail"]["fields"]["lastSeen"] == ("同步时间" if zh else "Synced at")
+        assert view["sources"]["table"]["lastSuccess"] == ("同步时间" if zh else "Synced at")
+        assert view["sources"]["details"]["title"] == ("详情" if zh else "Details")
+
+
+def test_zh_i18n_drops_ambiguous_labels() -> None:
+    zh_text = (I18N_DIR / "zh-CN.json").read_text(encoding="utf-8")
+    for old in ("最近发现", "最近成功", "诊断详情"):
+        assert old not in zh_text
 
 
 def test_service_defaults_to_six_sources(data_root) -> None:
