@@ -12,7 +12,7 @@
 - **稳定身份**：上游无稳定 id，插件以规范化名称生成 `a`+16 位十六进制 `raw_id`，落盘后永不重算；改名通过相似度识别并保留原 id。
 - **跨源合并**：同游戏内相似名称 + 开始时间相差 ≤24h 的活动合并展示，按优先级选择主源。
 - **下架追踪**：活动消失后保留 tombstone（默认 7 天），重新出现自动复活。
-- **结束前提醒**：按 `remind_days_before` 与 `remind_time` 生成提醒任务，主动推送到订阅会话；支持补发窗口、失败退避与逐目标状态机。
+- **结束前提醒**：按 `remind_days_before` 与 `remind_time` 生成提醒任务，主动推送到订阅会话；支持补发窗口、失败退避与逐目标状态机。所有目标统一经 `Context.send_message` 投递，不按平台前缀跳过（含 `qq_official` / `qq_official_webhook`，详见〈提醒投递与 QQ 官方机器人〉）。
 - **Dashboard 视图**：总览、活动、数据源、提醒四个分区（`views/activity`）。
 - **7 条 Web API**：`health` / `overview` / `games` / `activities` / `sources` / `sync` / `reminders`，均需 Dashboard 登录态。
 
@@ -47,7 +47,7 @@
 
 - 自定义 JSON 源使用点号路径映射（`map_activities` / `map_name` / `map_start` / `map_end` 必填），不支持数组下标。
 - 非法配置只会禁用对应源并记录原因，不会导致插件崩溃。
-- 配置更新后需重载插件生效（`general.enabled=false` 可关闭自动同步，仅用手动同步）。
+- 配置更新后需重载插件生效（含 `reminder.target_umos`；重载后新增目标会在下一轮自动追加到已有作业，已发送的目标不会重发）。`general.enabled=false` 可关闭自动同步，仅用手动同步。
 
 ## 数据目录
 
@@ -86,9 +86,17 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
 - 测试临时目录使用工作区根目录下的 `.dsh-test-tmp/`（`PLUGIN_TEST_TMP` 可覆盖），避免 Windows 受限环境对系统临时目录的写入限制。
 - `ruff` 使用与 AstrBot 仓库一致的版本（0.15.22）、默认 88 列宽。
 
+## 提醒投递与 QQ 官方机器人
+
+- **不再按平台前缀跳过**：所有提醒目标（含 `qq_official` / `qq_official_webhook` 的私聊与群聊）统一交给 `Context.send_message`，发送失败由既有失败状态机（`failed` / 退避重试）处理。旧实现依据 [CORE-103]「不得对 `qq_official` 主动发送」直接跳过，但 AstrBot 4.29.4 的 `qq_official` / `qq_official_webhook` 适配器已声明 `support_proactive_message=True` 并实现 `send_by_session` 主动发送（`context.py` 的旧 docstring 已过时）；此处以 AstrBot 源码为准。
+- **冷群限制**：QQ 官方机器人的群主动消息依赖 AstrBot **进程内**群场景缓存（`_session_scene` / `_session_last_message_id`），仅当适配器**收到**过该群消息后才写入，且每次 AstrBot 重启后清空。冷群发送时核心只打印 `[QQOfficial] No cached msg_id for session: …` 并静默跳过，而 `Context.send_message` 仍返回 `True`；因此插件的 `sent` 只表示「已交给平台适配器」，**不是平台投递回执**。规避方式：AstrBot 启动后先在该目标群发任意消息，或让群成员执行一次 `/活动订阅` 预热，再等待提醒。插件会在每次向 QQ 官方群目标发送前打印一条对应 warning（不含消息正文）。
+- **固定 `target_umos` 与群内 `/活动订阅` 的取舍**：`target_umos` 适合管理员指定、跨重启稳定的推送目标，但修改配置后需重载插件；`/活动订阅` 由群内成员自助登记、无需改配置，但同样受上述冷群缓存限制。两者最终走同一条投递路径。
+- **状态迁移**：历史状态中因旧前缀规则产生的 `skipped` / `platform_unsupported` 目标，会在升级后首次加载时一次性重置为 `pending` 并重试（提醒状态 schema v1 → v2）；`grace_expired`、`activity_ended` 等其它 skipped 目标保持不变，不会被重置。
+
 ## 兼容性与已知限制
 
 - 仅在 AstrBot **4.29.4** 稳定版上开发与验证；`astrbot_version` 只声明 `>=4.29.4,<4.30`。
+- `qq_official` / `qq_official_webhook` 的真实群投递未在本仓库实机验证：测试只覆盖插件侧调用与状态机；冷群可能被 AstrBot 核心静默跳过，`sent` 不是平台投递回执（见〈提醒投递与 QQ 官方机器人〉）。
 - Windows 若缺少 IANA 时区数据库（`tzdata` 未安装），`Asia/Shanghai` 系列回退为固定 `+08:00`；其他时区会使对应源禁用并记录 `unknown_timezone`。
 - 默认配置 `admins_id: ["astrbot"]` 使 WebChat 的 Dashboard 用户成为管理员，因此 `/活动同步` 的**管理员正向路径**已在实机验证；非管理员拒绝路径未单独实测（权限过滤器已按 `PermissionType.ADMIN` 注册）。
 - 视图 `app.js` 约 84 KB，略高于设计建议的 80 KB 软预算（功能完整且无构建步骤）；总资源仍低于 150 KB。
@@ -101,7 +109,7 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
 - 源 URL 仅允许 `https`（`allow_insecure_http=true` 时才允许 `http`），禁止用户信息、fragment 与非 80/443 端口；DNS 解析结果经私有/回环/保留地址校验后固定连接，禁止重定向。
 - 响应体有大小上限并流式读取，严格 UTF-8 解码；错误只记录摘要，不记录响应体全文。
 - 视图仅使用 `textContent` 渲染上游文本，无 `innerHTML`、无原生 `EventSource`、无 localStorage/cookie；封面仅允许 http(s) URL。
-- 主动消息发送前检查平台前缀，`qq_official` 系列直接跳过（AstrBot 不支持该平台的主动消息）。
+- 主动消息不按平台前缀跳过：`qq_official` / `qq_official_webhook` 目标同样交给 `Context.send_message`，其群聊冷启动限制见〈提醒投递与 QQ 官方机器人〉。
 
 ## 数据来源与版权
 

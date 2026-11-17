@@ -554,6 +554,19 @@ class GameActivityService:
     async def _send_message(self, umo: str, text: str) -> bool:
         if self.context is None:
             return False
+        if ":GroupMessage:" in umo:
+            platform = self.context.get_platform_inst(umo.split(":", 1)[0])
+            if platform is not None and platform.meta().name in {
+                "qq_official",
+                "qq_official_webhook",
+            }:
+                self.logger.warning(
+                    "QQ official group proactive send to %s depends on AstrBot's "
+                    "in-process group scene cache; a cold group may be silently "
+                    "skipped by the core. Warm the group with any group message or "
+                    "/活动订阅 first; 'sent' is not a platform delivery receipt.",
+                    umo,
+                )
         from astrbot.api.event import MessageChain
 
         return await self.context.send_message(umo, MessageChain().message(text))

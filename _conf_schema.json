@@ -115,7 +115,7 @@
       "target_umos": {
         "type": "list",
         "description": "固定提醒会话",
-        "hint": "留空则使用 /活动订阅 记录的会话",
+        "hint": "留空则使用 /活动订阅 记录的会话；群会话格式为 <平台ID>:GroupMessage:<群ID>。QQ 官方机器人群主动消息依赖 AstrBot 进程内群场景缓存，冷群可能被核心静默跳过：请先在群内发一条消息（或让群成员 /活动订阅）预热，且 sent 状态不代表平台回执。",
         "default": [],
         "_special": "umo"
       },

@@ -255,21 +255,154 @@ def test_transient_failure_exhausts_after_three_attempts(data_root) -> None:
     assert target["last_error"].startswith("transient_exhausted")
 
 
-def test_qq_official_target_skipped_without_sending(data_root) -> None:
+def test_qq_official_group_target_is_attempted(data_root) -> None:
     engine, store = make_engine(data_root)
     sender = Sender()
     tick(
         engine,
         [make_activity()],
-        {"starrail": ["qq_official:FriendMessage:1"]},
+        {"starrail": ["qq_official:GroupMessage:g1"]},
         sender=sender,
     )
-    assert sender.calls == []
+    assert [umo for umo, _ in sender.calls] == ["qq_official:GroupMessage:g1"]
     target = next(iter(jobs_of(store).values()))["targets"][
-        "qq_official:FriendMessage:1"
+        "qq_official:GroupMessage:g1"
     ]
-    assert target["status"] == "skipped"
-    assert target["last_error"] == "platform_unsupported"
+    assert target["status"] == "sent"
+    assert target["last_error"] == ""
+
+
+def test_qq_official_webhook_group_target_is_attempted(data_root) -> None:
+    engine, store = make_engine(data_root)
+    sender = Sender()
+    tick(
+        engine,
+        [make_activity()],
+        {"starrail": ["qq_official_webhook:GroupMessage:g1"]},
+        sender=sender,
+    )
+    assert [umo for umo, _ in sender.calls] == [
+        "qq_official_webhook:GroupMessage:g1",
+    ]
+    target = next(iter(jobs_of(store).values()))["targets"][
+        "qq_official_webhook:GroupMessage:g1"
+    ]
+    assert target["status"] == "sent"
+    assert target["last_error"] == ""
+
+
+def test_new_target_added_after_sent_does_not_resend_old(data_root) -> None:
+    engine, store = make_engine(data_root)
+    sender = Sender()
+    tick(engine, [make_activity()], {"starrail": ["umo_private"]}, sender=sender)
+    job = next(iter(jobs_of(store).values()))
+    private_sent_at = job["targets"]["umo_private"]["sent_at"]
+    assert private_sent_at == NOW
+
+    sender2 = Sender()
+    tick(
+        engine,
+        [make_activity()],
+        {"starrail": ["umo_private", "qq_official:GroupMessage:g1"]},
+        sender=sender2,
+        now=NOW + 60,
+    )
+    assert [umo for umo, _ in sender2.calls] == ["qq_official:GroupMessage:g1"]
+    job = next(iter(jobs_of(store).values()))
+    assert job["status"] == "sent"
+    assert job["targets"]["umo_private"]["status"] == "sent"
+    assert job["targets"]["umo_private"]["sent_at"] == private_sent_at
+    assert job["targets"]["qq_official:GroupMessage:g1"]["status"] == "sent"
+
+
+def test_new_target_reopens_skipped_job(data_root) -> None:
+    engine, store = make_engine(data_root)
+    tick(engine, [make_activity()], {})
+    job = next(iter(jobs_of(store).values()))
+    assert job["status"] == "skipped"
+    assert job["last_error"] == "no_targets"
+
+    sender = Sender()
+    tick(
+        engine,
+        [make_activity()],
+        {"starrail": ["umo_late"]},
+        sender=sender,
+        now=NOW + 60,
+    )
+    assert [umo for umo, _ in sender.calls] == ["umo_late"]
+    job = next(iter(jobs_of(store).values()))
+    assert job["status"] == "sent"
+    assert job["targets"]["umo_late"]["status"] == "sent"
+
+
+def test_platform_unsupported_targets_migrate_to_pending(data_root) -> None:
+    engine, store = make_engine(data_root)
+    legacy_target = {
+        "status": "skipped",
+        "attempts": 0,
+        "last_error": "platform_unsupported",
+        "next_attempt_at": 0,
+        "sent_at": None,
+    }
+    grace_target = {
+        "status": "skipped",
+        "attempts": 0,
+        "last_error": "grace_expired",
+        "next_attempt_at": 0,
+        "sent_at": None,
+    }
+    store.save_state(
+        "reminders",
+        {
+            "schema_version": 1,
+            "items": {
+                "starrail#a1#1": {
+                    "key": "starrail#a1#1",
+                    "game_id": "starrail",
+                    "source_id": "starrail",
+                    "raw_id": "a1",
+                    "activity_key": "starrail#a1",
+                    "threshold_days": 1,
+                    "fire_at_epoch": NOW - 3600,
+                    "status": "skipped",
+                    "attempts": 0,
+                    "last_error": "platform_unsupported",
+                    "sent_at": None,
+                    "targets": {
+                        "qq_official:GroupMessage:g1": legacy_target,
+                        "umo_grace": grace_target,
+                    },
+                },
+            },
+        },
+    )
+    subscriptions = {"starrail": ["qq_official:GroupMessage:g1", "umo_grace"]}
+    sender = Sender()
+    tick(engine, [make_activity()], subscriptions, sender=sender)
+    assert [umo for umo, _ in sender.calls] == ["qq_official:GroupMessage:g1"]
+
+    state = store.load_state("reminders", {})
+    assert state["schema_version"] == 2
+    job = state["items"]["starrail#a1#1"]
+    assert job["targets"]["qq_official:GroupMessage:g1"]["status"] == "sent"
+    assert job["targets"]["umo_grace"]["status"] == "skipped"
+    assert job["targets"]["umo_grace"]["last_error"] == "grace_expired"
+
+    # A v2 state must not be migrated (and therefore reset) again.
+    sender2 = Sender()
+    tick(
+        engine,
+        [make_activity()],
+        subscriptions,
+        sender=sender2,
+        now=NOW + 60,
+    )
+    assert sender2.calls == []
+    state = store.load_state("reminders", {})
+    grace = state["items"]["starrail#a1#1"]["targets"]["umo_grace"]
+    assert grace["status"] == "skipped"
+    assert grace["last_error"] == "grace_expired"
 
 
 def test_grace_expired_target_is_skipped(data_root) -> None:

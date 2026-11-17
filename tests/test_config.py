@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
+import types
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import pytest
 
 from game_activity.service import GameActivityService, normalize_config
 
@@ -301,9 +306,97 @@ def test_stop_cancels_in_flight_manual_sync(data_root) -> None:
     asyncio.run(scenario())
 
 
+class _PlatformMeta:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+class _Platform:
+    def __init__(self, name: str) -> None:
+        self._name = name
+
+    def meta(self) -> _PlatformMeta:
+        return _PlatformMeta(self._name)
+
+
+class FakeSendContext:
+    def __init__(self, adapter_name: str) -> None:
+        self.adapter_name = adapter_name
+        self.requests: list[str] = []
+
+    def get_platform_inst(self, platform_id: str):
+        self.last_platform_id = platform_id
+        return _Platform(self.adapter_name)
+
+    async def send_message(self, umo, message_chain) -> bool:
+        self.requests.append(umo)
+        return True
+
+
+class FakeMessageChain:
+    def message(self, text: str) -> "FakeMessageChain":
+        self.text = text
+        return self
+
+
+@pytest.fixture()
+def message_chain_stub(monkeypatch) -> None:
+    """Replace the AstrBot import with a stub to avoid its data-dir side effect."""
+    module = types.ModuleType("astrbot.api.event")
+    module.MessageChain = FakeMessageChain
+    monkeypatch.setitem(sys.modules, "astrbot.api.event", module)
+
+
 def test_send_message_without_context_returns_false(data_root) -> None:
     service = make_service(data_root)
     assert asyncio.run(service._send_message("umo", "text")) is False
+
+
+@pytest.mark.parametrize("adapter_name", ["qq_official", "qq_official_webhook"])
+def test_send_message_warns_for_qq_official_group(
+    data_root,
+    caplog,
+    message_chain_stub,
+    adapter_name: str,
+) -> None:
+    context = FakeSendContext(adapter_name)
+    service = make_service(data_root, context=context)
+    with caplog.at_level(logging.WARNING):
+        delivered = asyncio.run(
+            service._send_message("qq_instance:GroupMessage:g1", "活动即将结束提醒"),
+        )
+    assert delivered is True
+    assert context.requests == ["qq_instance:GroupMessage:g1"]
+    assert "scene cache" in caplog.text
+    assert "活动即将结束提醒" not in caplog.text
+
+
+def test_send_message_skips_qq_warning_for_non_qq_group(
+    data_root,
+    caplog,
+    message_chain_stub,
+) -> None:
+    context = FakeSendContext("aiocqhttp")
+    service = make_service(data_root, context=context)
+    with caplog.at_level(logging.WARNING):
+        delivered = asyncio.run(
+            service._send_message("aiocqhttp:GroupMessage:g1", "text"),
+        )
+    assert delivered is True
+    assert caplog.text == ""
+
+
+def test_metadata_declares_qq_official_platforms() -> None:
+    metadata = (Path(__file__).resolve().parent.parent / "metadata.yaml").read_text(
+        encoding="utf-8",
+    )
+    platforms = {
+        line.strip().removeprefix("- ").strip()
+        for line in metadata.splitlines()
+        if line.strip().startswith("- ")
+    }
+    assert "qq_official" in platforms
+    assert "qq_official_webhook" in platforms
 
 
 def test_merged_activities_deduplicates_sources(data_root) -> None:

@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone, tzinfo
 from typing import Any
 
 from .diff import derive_status
-from .models import GAME_NAMES, SCHEMA_VERSION, load_zone
+from .models import GAME_NAMES, load_zone
 
 SENDERS = Callable[[str, str], Awaitable[bool]]
 MAX_TEXT_CHARS = 1800
@@ -15,7 +15,9 @@ MAX_LINES = 10
 MAX_JOBS = 5000
 TERMINAL_RETENTION_SECONDS = 30 * 86400
 MAX_ATTEMPTS = 3
-QQ_OFFICIAL_PREFIXES = ("qq_official:", "qq_official_webhook:")
+# The reminder state schema is versioned independently: models.SCHEMA_VERSION
+# versions snapshots and API payloads and must remain 1 for compatibility.
+REMINDER_SCHEMA_VERSION = 2
 TERMINAL_STATUSES = {"sent", "skipped", "failed"}
 
 
@@ -123,11 +125,47 @@ class ReminderEngine:
     def _load(self) -> dict[str, Any]:
         state = self.store.load_state(
             "reminders",
-            {"schema_version": SCHEMA_VERSION, "items": {}},
+            {"schema_version": REMINDER_SCHEMA_VERSION, "items": {}},
         )
         if not isinstance(state.get("items"), dict):
             state["items"] = {}
-        state["schema_version"] = SCHEMA_VERSION
+        try:
+            version = int(state.get("schema_version") or 0)
+        except (TypeError, ValueError):
+            version = 0
+        if version < 2:
+            # The v1 code marked qq_official/qq_official_webhook targets
+            # skipped(platform_unsupported) before any send attempt. That state is
+            # terminal, so it would never heal after the prefix skip was removed.
+            # Other skip reasons (grace_expired, activity_ended, ...) are policy,
+            # not a code defect, and stay untouched.
+            migrated = 0
+            for job in state["items"].values():
+                if not isinstance(job, dict):
+                    continue
+                targets = job.get("targets")
+                if not isinstance(targets, dict):
+                    continue
+                reset = False
+                for umo, target in list(targets.items()):
+                    if (
+                        isinstance(target, dict)
+                        and target.get("status") == "skipped"
+                        and target.get("last_error") == "platform_unsupported"
+                    ):
+                        targets[umo] = self._new_target()
+                        reset = True
+                if reset:
+                    job["status"] = "pending"
+                    if job.get("last_error") == "platform_unsupported":
+                        job["last_error"] = ""
+                    migrated += 1
+            if migrated:
+                self.logger.info(
+                    "Migrated %s reminder job(s) from schema v1 to v2",
+                    migrated,
+                )
+        state["schema_version"] = REMINDER_SCHEMA_VERSION
         return state
 
     def _save(self, state: dict[str, Any], now: int) -> None:
@@ -261,13 +299,18 @@ class ReminderEngine:
                 key = f"{activity_key}#{threshold}"
                 existing = items.get(key)
                 if existing is not None:
-                    if existing.get("status") == "sent":
-                        continue
+                    previous_status = str(existing.get("status") or "")
+                    existing_targets = existing.setdefault("targets", {})
+                    added = False
                     for umo in targets:
-                        existing["targets"].setdefault(
-                            umo,
-                            self._new_target(),
-                        )
+                        if umo not in existing_targets:
+                            existing_targets[umo] = self._new_target()
+                            added = True
+                    if added:
+                        # A late target must be attempted in this tick, not the next.
+                        existing["status"] = "pending"
+                        if previous_status in TERMINAL_STATUSES:
+                            existing["last_error"] = ""
                     continue
                 try:
                     fire_at = compute_fire_at(
@@ -392,14 +435,6 @@ class ReminderEngine:
         sends_used = 0
         for umo in sorted(due):
             jobs = due[umo]
-            if umo.startswith(QQ_OFFICIAL_PREFIXES):
-                for job in jobs:
-                    target = job["targets"].get(umo)
-                    if target and target.get("status") == "pending":
-                        target["status"] = "skipped"
-                        target["last_error"] = "platform_unsupported"
-                        stats["skipped"] += 1
-                continue
             if sends_used >= max_sends:
                 break
             sends_used += 1
